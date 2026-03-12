@@ -1,0 +1,15 @@
+{
+  "title": "Intro.Title",
+  "text": "Intro.Text",
+  "button": [
+    {
+      "title": "Intro.Button.Explore",
+      "scrollTo": "videos"
+    },
+    {
+      "title": "Intro.Button.LearnMore",
+      "color": "#fff",
+      "url": "/graphs"
+    }
+  ]
+}

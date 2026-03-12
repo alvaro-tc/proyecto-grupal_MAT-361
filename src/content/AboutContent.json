@@ -1,0 +1,16 @@
+{
+  "title": "About.Title",
+  "text": "About.Text",
+  "section": [
+    {
+      "title": "About.Section1.Title",
+      "content": "About.Section1.Content",
+      "icon": "notes.svg"
+    },
+    {
+      "title": "About.Section2.Title",
+      "content": "About.Section2.Content",
+      "icon": "notes.svg"
+    }
+  ]
+}

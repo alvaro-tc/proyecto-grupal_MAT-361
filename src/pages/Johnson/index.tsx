@@ -1,0 +1,1188 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import styled, { keyframes, css } from "styled-components";
+import { Switch, Modal, Input, Button, message, InputNumber, Slider, List } from "antd";
+import {
+    PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
+    SettingOutlined, DeleteOutlined, EditOutlined, InfoCircleOutlined,
+    CloseOutlined, ControlOutlined, TableOutlined, SaveOutlined, FolderOpenOutlined,
+    DownloadOutlined, UploadOutlined,
+} from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
+import { useAuth, API_URL } from "../../context/AuthContext";
+import AdjacencyMatrix from "../../components/AdjacencyMatrix";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface GraphNode { id: string; x: number; y: number; label: string; color: string; }
+interface GraphEdge {
+    id: string; source: string; target: string; weight: string;
+    isDirected: boolean; cpOffset: { dx: number; dy: number };
+}
+
+type SimState = 'idle' | 'running' | 'paused' | 'done';
+
+// ─── Styled Components ────────────────────────────────────────────────────────
+const pulse = keyframes`0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.4)} 50%{box-shadow:0 0 0 8px rgba(139,92,246,0)}`;
+const fadeIn = keyframes`from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}`;
+
+const Wrap = styled.div`
+  display: flex; flex-direction: column; min-height: calc(100vh - 60px);
+  padding: 1rem 2rem 2rem; gap: 1rem;
+`;
+
+const SimBar = styled.div`
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  background: white; padding: 0.75rem 1.25rem; border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(46,24,106,0.08);
+  justify-content: flex-start;
+`;
+
+const SimBarLabel = styled.span`
+  font-size: 0.82rem; color: #4a5568; font-weight: 500;
+`;
+
+const EditorWrap = styled.div`
+  display: flex; gap: 1.5rem; flex: 1; align-items: stretch;
+`;
+
+const CanvasOuter = styled.div`
+  flex: 2; min-width: 0; display: flex; flex-direction: column;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 4px 12px rgba(46,24,106,0.08);
+  background: white; position: relative;
+`;
+
+interface CanvasProps { mode: string; showGrid: boolean; }
+const CanvasSVG = styled.div<CanvasProps>`
+  flex: 1; position: relative; min-height: 500px; cursor: ${p => p.mode === 'creation' ? 'crosshair' : 'default'};
+  background-image: ${p => p.showGrid
+        ? 'radial-gradient(circle, #cbd5e0 1px, transparent 1px)'
+        : 'none'};
+  background-size: 28px 28px;
+  background-position: 14px 14px;
+`;
+
+interface FloatingPanelProps { visible: boolean; }
+const FloatingPanel = styled.div<FloatingPanelProps>`
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 10;
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
+  border-radius: 50px; padding: 6px 14px;
+  box-shadow: 0 4px 16px rgba(46,24,106,0.12);
+  opacity: ${p => p.visible ? 1 : 0}; pointer-events: ${p => p.visible ? 'auto' : 'none'};
+  transition: opacity 0.3s;
+`;
+
+const PanelToggle = styled.button`
+  position: absolute; bottom: 10px; right: 10px; z-index: 10;
+  background: rgba(255,255,255,0.85); border: none; border-radius: 50%;
+  width: 32px; height: 32px; cursor: pointer; font-size: 1rem; color: #2e186a;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+`;
+
+// Regular node circle
+const NodeCircle = styled.div<{ color: string; isSelected: boolean; isCritical?: boolean; isActive?: boolean; }>`
+  position: absolute; width: 50px; height: 50px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: ${p => p.color};
+  border: ${p => p.isCritical ? '3px solid #ef4444' : p.isSelected ? '3px solid #8b5cf6' : '3px solid transparent'};
+  color: white; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; user-select: none; touch-action: none;
+  z-index: 5; transition: border-color 0.3s, transform 0.15s;
+  ${p => p.isActive && css`animation: ${pulse} 1s infinite;`}
+  &:hover { transform: translate(-50%, -50%) scale(1.08); }
+`;
+
+// CPM node with 3-zone visualization
+const CpmNode = styled.div<{ color: string; isSelected: boolean; isCritical?: boolean; isActive?: boolean; }>`
+  position: absolute; width: 70px; height: 70px; border-radius: 12px;
+  transform: translate(-50%, -50%);
+  border: ${p => p.isCritical ? '2.5px solid #ef4444' : p.isSelected ? '2.5px solid #8b5cf6' : '2.5px solid #c7d2fe'};
+  overflow: hidden; cursor: pointer; user-select: none; touch-action: none;
+  z-index: 5; transition: border-color 0.3s, transform 0.15s;
+  display: flex; flex-direction: column;
+  box-shadow: 0 2px 8px rgba(46,24,106,0.13);
+  ${p => p.isActive && css`animation: ${pulse} 1s infinite;`}
+  &:hover { transform: translate(-50%, -50%) scale(1.05); }
+`;
+
+const CpmLabel = styled.div<{ color: string }>`
+  background: ${p => p.color}; color: white;
+  font-weight: 700; font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  height: 50%; border-bottom: 1.5px solid rgba(255,255,255,0.3);
+`;
+
+const CpmBottom = styled.div`
+  display: flex; height: 50%;
+`;
+
+const CpmCell = styled.div<{ etCell?: boolean; hasValue?: boolean }>`
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 700;
+  background: ${p => p.etCell ? '#eef2ff' : '#fef3c7'};
+  color: ${p => p.hasValue ? (p.etCell ? '#2e186a' : '#92400e') : '#b0b8c9'};
+  border-left: ${p => p.etCell ? 'none' : '1px solid #e5e7eb'};
+  transition: all 0.3s ease;
+  animation: ${p => p.hasValue ? css`${fadeIn} 0.4s ease` : 'none'};
+`;
+
+interface EdgeLabelProps { x: number; y: number; mode: string; }
+const EdgeLabelEl = styled.div<EdgeLabelProps>`
+  position: absolute; left: ${p => p.x}px; top: ${p => p.y}px;
+  transform: translate(-50%, -50%);
+  background: white; border-radius: 6px; padding: 2px 6px;
+  font-size: 0.72rem; font-weight: 700; color: #2e186a;
+  border: 1.5px solid #c4b5fd;
+  cursor: ${p => p.mode === 'editing' ? 'grab' : 'default'};
+  user-select: none; touch-action: none; z-index: 6;
+`;
+
+const SlackBadge = styled.span<{ critical: boolean }>`
+  display: inline-block; margin-left: 4px;
+  font-size: 0.65rem; font-weight: 600;
+  color: ${p => p.critical ? '#ef4444' : '#16a34a'};
+  opacity: 0.85;
+`;
+
+const SummaryPanel = styled.div`
+  background: white; border-radius: 16px; padding: 1.25rem 1.5rem;
+  box-shadow: 0 4px 12px rgba(46,24,106,0.08);
+  animation: ${fadeIn} 0.4s ease;
+`;
+
+const ContextMenuEl = styled.div<{ x: number; y: number }>`
+  position: fixed; left: ${p => p.x}px; top: ${p => p.y}px;
+  background: white; border-radius: 10px; z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 4px; min-width: 150px;
+`;
+
+const ContextMenuItemEl = styled.div`
+  padding: 8px 12px; border-radius: 7px; cursor: pointer; display: flex;
+  align-items: center; gap: 8px; font-size: 0.85rem; color: #2e186a;
+  &:hover { background: #f5f3ff; }
+`;
+
+const ModalTitle = ({ title }: { title: string }) => (
+    <div style={{ textAlign: 'center', fontSize: '1.2rem', fontWeight: 700, color: '#2e186a' }}>{title}</div>
+);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const COLORS = ["#2e186a", "#1890ff", "#52c41a", "#faad14", "#f5222d", "#722ed1", "#eb2f96", "#13c2c2"];
+
+function topologicalSort(nodes: GraphNode[], edges: GraphEdge[]): string[] | null {
+    const inDeg: Record<string, number> = {};
+    const adj: Record<string, string[]> = {};
+    nodes.forEach(n => { inDeg[n.id] = 0; adj[n.id] = []; });
+    edges.forEach(e => {
+        adj[e.source].push(e.target);
+        inDeg[e.target] = (inDeg[e.target] || 0) + 1;
+    });
+    const queue = nodes.filter(n => inDeg[n.id] === 0).map(n => n.id);
+    const order: string[] = [];
+    while (queue.length) {
+        const cur = queue.shift()!;
+        order.push(cur);
+        (adj[cur] || []).forEach(nxt => {
+            inDeg[nxt]--;
+            if (inDeg[nxt] === 0) queue.push(nxt);
+        });
+    }
+    return order.length === nodes.length ? order : null; // null = cycle detected
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+const Johnson: React.FC = () => {
+    useTranslation();
+
+    // ── Graph state ──────────────────────────────────────────────────
+    const [nodes, setNodes] = useState<GraphNode[]>([]);
+    const [edges, setEdges] = useState<GraphEdge[]>([]);
+    const [mode, setMode] = useState<'creation' | 'editing'>('creation');
+    const [showGrid, setShowGrid] = useState(true);
+    const [showPanel, setShowPanel] = useState(true);
+    const [showMatrix, setShowMatrix] = useState(true);
+    const [showInstructions, setShowInstructions] = useState(true);
+    const [editableMatrix, setEditableMatrix] = useState(true);
+    const [labelMode, setLabelMode] = useState<'letters' | 'numbers'>('letters');
+    const [selectedNode, setSelectedNode] = useState<string | null>(null);
+    const [draggingNode, setDraggingNode] = useState<string | null>(null);
+    const [draggingEdge, setDraggingEdge] = useState<string | null>(null);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [edgeWeight, setEdgeWeight] = useState<number | null>(1);
+    const [isEdgeModalVisible, setIsEdgeModalVisible] = useState(false);
+    const [pendingConnection, setPendingConnection] = useState<{ source: string; target: string } | null>(null);
+    const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, type: 'node' as 'node' | 'edge', id: '' });
+    const [editNodeData, setEditNodeData] = useState({ name: '', color: '' });
+    const [isEditNodeModalVisible, setIsEditNodeModalVisible] = useState(false);
+    const [editEdgeWeight, setEditEdgeWeight] = useState<number | null>(null);
+    const [isEditEdgeModalVisible, setIsEditEdgeModalVisible] = useState(false);
+
+    // ── Simulation state ─────────────────────────────────────────────
+    const [simState, setSimState] = useState<SimState>('idle');
+    const [simSpeed, setSimSpeed] = useState(1200); // slider value: 1500=slowest(left) 10=fastest(right)
+    const simSpeedRef = useRef(310); // actual delay = 1510 - sliderValue
+    const [earlyTimes, setEarlyTimes] = useState<Record<string, number | null>>({});
+    const [lateTimes, setLateTimes] = useState<Record<string, number | null>>({});
+    const [slacks, setSlacks] = useState<Record<string, number | null>>({});
+    const [criticalEdges, setCriticalEdges] = useState<Set<string>>(new Set());
+    const [activeNode, setActiveNode] = useState<string | null>(null);
+    const [activeEdge, setActiveEdge] = useState<string | null>(null);
+    const [criticalPath, setCriticalPath] = useState<string[]>([]);
+    const [criticalNodes, setCriticalNodes] = useState<Set<string>>(new Set());
+    const simAbort = useRef(false);
+
+    const canvasRef = useRef<HTMLDivElement>(null);
+    const longPressData = useRef<{ timer: NodeJS.Timeout | null; startX: number; startY: number }>({ timer: null, startX: 0, startY: 0 });
+    const edgeLongPressData = useRef<{ timer: NodeJS.Timeout | null; startX: number; startY: number }>({ timer: null, startX: 0, startY: 0 });
+    const importRef = useRef<HTMLInputElement>(null);
+
+
+    const { user, token } = useAuth();
+
+    // Only block editing while simulation is actively running or paused
+    // When 'done', the user can freely edit the graph and re-run
+    const isSimActive = simState === 'running' || simState === 'paused';
+
+    // ── Save/Load state ────────────────────────────────────────────────
+    const [isSaveModalVisible, setIsSaveModalVisible] = useState(false);
+    const [isLoadModalVisible, setIsLoadModalVisible] = useState(false);
+    const [canvasName, setCanvasName] = useState('');
+    const [canvasList, setCanvasList] = useState<{ id: string; name: string; created_at: string }[]>([]);
+    const [savingCanvas, setSavingCanvas] = useState(false);
+    const [loadingCanvases, setLoadingCanvases] = useState(false);
+
+    // JSON Export name modal
+    const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+    const [exportFileName, setExportFileName] = useState('grafo-cpm');
+
+    useEffect(() => {
+        const h = () => setContextMenu(c => ({ ...c, visible: false }));
+        document.addEventListener('click', h);
+        return () => document.removeEventListener('click', h);
+    }, []);
+    // Inverted: slider left=1500(slow) → delay=1510-1500=10ms  |  slider right=10(fast) → delay=1500ms
+    // Wait — user wants left slow right fast: sliderValue high=slow, sliderValue low=fast
+    // delay = sliderValue (slider IS the delay, but displayed reversed)
+    useEffect(() => { simSpeedRef.current = simSpeed; }, [simSpeed]);
+
+    const sleep = () => new Promise<void>(res => setTimeout(res, simSpeedRef.current));
+
+    // ── Validate Graph ────────────────────────────────────────────────
+    const validateGraph = useCallback((): string | null => {
+        if (nodes.length < 2) return "El grafo debe tener al menos 2 nodos.";
+        const order = topologicalSort(nodes, edges);
+        if (!order) return "El grafo contiene ciclos. El CPM requiere un DAG (grafo acíclico dirigido).";
+        const inDeg: Record<string, number> = {};
+        const outDeg: Record<string, number> = {};
+        nodes.forEach(n => { inDeg[n.id] = 0; outDeg[n.id] = 0; });
+        edges.forEach(e => { inDeg[e.target]++; outDeg[e.source]++; });
+        const sources = nodes.filter(n => inDeg[n.id] === 0);
+        const sinks = nodes.filter(n => outDeg[n.id] === 0);
+        if (sources.length !== 1) return `El grafo debe tener exactamente UN nodo fuente (sin aristas entrantes). Encontrados: ${sources.length}.`;
+        if (sinks.length !== 1) return `El grafo debe tener exactamente UN nodo sumidero (sin aristas salientes). Encontrados: ${sinks.length}.`;
+        return null;
+    }, [nodes, edges]);
+
+    // ── Run CPM simulation ────────────────────────────────────────────
+    const runSimulation = useCallback(async () => {
+        const err = validateGraph();
+        if (err) { Modal.error({ title: "Grafo inválido para CPM", content: err, centered: true }); return; }
+
+        simAbort.current = false;
+        setSimState('running');
+
+        const order = topologicalSort(nodes, edges)!;
+        const et: Record<string, number> = {};
+        const lt: Record<string, number> = {};
+        const newSlacks: Record<string, number> = {};
+
+        // Reset visuals
+        setEarlyTimes({});
+        setLateTimes({});
+        setSlacks({});
+        setCriticalEdges(new Set());
+        setCriticalPath([]);
+        setCriticalNodes(new Set());
+
+        // Build adjacency
+        const incoming: Record<string, GraphEdge[]> = {};
+        const outgoing: Record<string, GraphEdge[]> = {};
+        nodes.forEach(n => { incoming[n.id] = []; outgoing[n.id] = []; });
+        edges.forEach(e => { incoming[e.target].push(e); outgoing[e.source].push(e); });
+
+        // ── Forward pass ──────────────────────────────────────────────
+        for (const nodeId of order) {
+            if (simAbort.current) { setSimState('idle'); return; }
+            setActiveNode(nodeId);
+
+            const inc = incoming[nodeId];
+            let et_val = 0;
+            if (inc.length > 0) {
+                for (const edge of inc) {
+                    setActiveEdge(edge.id);
+                    await new Promise<void>(res => setTimeout(res, simSpeedRef.current * 0.4));
+                }
+                et_val = Math.max(...inc.map(e => (et[e.source] ?? 0) + parseFloat(e.weight || '1')));
+            }
+            et[nodeId] = et_val;
+            setEarlyTimes(prev => ({ ...prev, [nodeId]: et_val }));
+            setActiveEdge(null);
+            await sleep();
+        }
+
+        setActiveNode(null);
+
+        // ── Backward pass ─────────────────────────────────────────────
+        const sink = order[order.length - 1];
+        lt[sink] = et[sink];
+        setLateTimes({ [sink]: et[sink] });
+        await sleep();
+
+        for (let i = order.length - 2; i >= 0; i--) {
+            if (simAbort.current) { setSimState('idle'); return; }
+            const nodeId = order[i];
+            setActiveNode(nodeId);
+
+            const out = outgoing[nodeId];
+            for (const edge of out) {
+                setActiveEdge(edge.id);
+                await new Promise<void>(res => setTimeout(res, simSpeedRef.current * 0.4));
+            }
+
+            const lt_val = Math.min(...out.map(e => (lt[e.target] ?? 0) - parseFloat(e.weight || '1')));
+            lt[nodeId] = lt_val;
+            setLateTimes(prev => ({ ...prev, [nodeId]: lt_val }));
+            setActiveEdge(null);
+            await sleep();
+        }
+
+        setActiveNode(null);
+
+        // ── Calculate slacks & critical path ─────────────────────────
+        const critEdges = new Set<string>();
+        const critNodeSet = new Set<string>();
+        edges.forEach(edge => {
+            const slack = (lt[edge.target] ?? 0) - (et[edge.source] ?? 0) - parseFloat(edge.weight || '1');
+            newSlacks[edge.id] = Math.round(slack * 1000) / 1000;
+            if (Math.abs(slack) < 0.001) {
+                critEdges.add(edge.id);
+                critNodeSet.add(edge.source);
+                critNodeSet.add(edge.target);
+            }
+        });
+
+        setSlacks(newSlacks);
+        setCriticalEdges(critEdges);
+        setCriticalNodes(critNodeSet);
+
+        // Build critical path label
+        const critPath: string[] = [];
+        let cur = order[0];
+        critPath.push(cur);
+        while (outgoing[cur]?.length > 0) {
+            const critEdge = outgoing[cur].find(e => critEdges.has(e.id));
+            if (!critEdge) break;
+            cur = critEdge.target;
+            critPath.push(cur);
+        }
+        setCriticalPath(critPath);
+        setSimState('done');
+    }, [nodes, edges, validateGraph]); // simSpeed intentionally omitted — read via simSpeedRef.current
+
+
+    const stopSimulation = () => {
+        simAbort.current = true;
+        setSimState('idle');
+        setActiveNode(null);
+        setActiveEdge(null);
+    };
+
+    const resetSimulation = () => {
+        simAbort.current = true;
+        setSimState('idle');
+        setActiveNode(null);
+        setActiveEdge(null);
+        setEarlyTimes({});
+        setLateTimes({});
+        setSlacks({});
+        setCriticalEdges(new Set());
+        setCriticalNodes(new Set());
+        setCriticalPath([]);
+    };
+
+    // ── Save / Load canvas ────────────────────────────────────────────────
+    const saveCanvas = async () => {
+        if (!canvasName.trim()) { message.warning('Ingrese un nombre para la pizarra'); return; }
+        setSavingCanvas(true);
+        try {
+            const res = await fetch(`${API_URL}/canvases`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ name: canvasName.trim(), nodes, edges, config: { showGrid, labelMode } }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            message.success(`Pizarra guardada: ${data.name}`);
+            setCanvasName(''); setIsSaveModalVisible(false);
+        } catch (err: any) { message.error(err.message || 'Error al guardar'); }
+        finally { setSavingCanvas(false); }
+    };
+
+    const openLoadModal = async () => {
+        setLoadingCanvases(true); setIsLoadModalVisible(true);
+        try {
+            const res = await fetch(`${API_URL}/canvases`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            setCanvasList(data);
+        } catch (err: any) { message.error(err.message || 'Error al cargar pizarras'); }
+        finally { setLoadingCanvases(false); }
+    };
+
+    const loadCanvas = async (id: string) => {
+        try {
+            const res = await fetch(`${API_URL}/canvases/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            setNodes(data.data.nodes ?? []);
+            setEdges(data.data.edges ?? []);
+            if (data.data.config) {
+                setShowGrid(data.data.config.showGrid ?? true);
+                setLabelMode(data.data.config.labelMode ?? 'letters');
+            }
+            setSelectedNode(null); setIsLoadModalVisible(false); resetSimulation();
+            message.success(`Pizarra cargada: ${data.name}`);
+        } catch (err: any) { message.error(err.message || 'Error al cargar pizarra'); }
+    };
+
+    const deleteCanvasEntry = async (id: string) => {
+        await fetch(`${API_URL}/canvases/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+        setCanvasList(prev => prev.filter(c => c.id !== id));
+    };
+
+    // ─── JSON Export / Import (guests only) ──────────────────────────────────
+    const handleExportJSON = () => {
+        setExportFileName('grafo-cpm');
+        setIsExportModalVisible(true);
+    };
+
+    const doExportJSON = () => {
+        const name = exportFileName.trim() || 'grafo-cpm';
+        const data = {
+            version: 1,
+            nodes,
+            edges,
+            config: { showGrid, labelMode },
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${name}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setIsExportModalVisible(false);
+        message.success('Grafo exportado correctamente');
+    };
+
+    const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const data = JSON.parse(ev.target?.result as string);
+                if (!data.nodes || !data.edges) throw new Error('Formato inválido');
+                setNodes(data.nodes);
+                setEdges(data.edges);
+                if (data.config) {
+                    if (data.config.showGrid !== undefined) setShowGrid(data.config.showGrid);
+                    if (data.config.labelMode) setLabelMode(data.config.labelMode);
+                }
+                resetSimulation();
+                setIsSettingsOpen(false);
+                message.success('Grafo importado correctamente');
+            } catch {
+                message.error('El archivo no es un grafo válido');
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    };
+
+
+    const getRandomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
+
+    const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (isSimActive || mode === 'editing') return;
+        if (!canvasRef.current || e.target !== canvasRef.current) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const label = labelMode === 'letters'
+            ? String.fromCharCode(65 + (nodes.length % 26)) + (nodes.length >= 26 ? Math.floor(nodes.length / 26) : '')
+            : `${nodes.length + 1}`;
+        setNodes(prev => [...prev, { id: `node-${Date.now()}`, x, y, label, color: getRandomColor() }]);
+        setSelectedNode(null);
+    };
+
+    const handleNodePointerDown = (e: React.PointerEvent, nodeId: string) => {
+        e.stopPropagation();
+        if (isSimActive) return;
+        longPressData.current.startX = e.clientX;
+        longPressData.current.startY = e.clientY;
+        longPressData.current.timer = setTimeout(() => {
+            setContextMenu({ visible: true, x: longPressData.current.startX, y: longPressData.current.startY, type: 'node', id: nodeId });
+            setDraggingNode(null);
+        }, 500);
+        if (mode === 'editing') setDraggingNode(nodeId);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!draggingNode || !canvasRef.current) return;
+        const lt = longPressData.current;
+        if (lt.timer && (Math.abs(e.clientX - lt.startX) > 10 || Math.abs(e.clientY - lt.startY) > 10)) {
+            clearTimeout(lt.timer); lt.timer = null;
+        }
+        const rect = canvasRef.current.getBoundingClientRect();
+        setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, x: e.clientX - rect.left, y: e.clientY - rect.top } : n));
+    };
+
+    const handlePointerUp = () => {
+        if (longPressData.current.timer) { clearTimeout(longPressData.current.timer); longPressData.current.timer = null; }
+        setDraggingNode(null);
+    };
+
+    const handleNodePointerMove = (e: React.PointerEvent) => {
+        const lt = longPressData.current;
+        if (lt.timer && (Math.abs(e.clientX - lt.startX) > 10 || Math.abs(e.clientY - lt.startY) > 10)) {
+            clearTimeout(lt.timer); lt.timer = null;
+        }
+    };
+
+    const handleNodePointerUp = () => {
+        if (longPressData.current.timer) { clearTimeout(longPressData.current.timer); longPressData.current.timer = null; }
+    };
+
+    const handleNodeClick = (e: React.MouseEvent, nodeId: string) => {
+        e.stopPropagation();
+        if (isSimActive) return;
+        if (longPressData.current.timer) { clearTimeout(longPressData.current.timer); longPressData.current.timer = null; }
+        if (mode !== 'creation') return;
+        if (!selectedNode) { setSelectedNode(nodeId); message.info("Haz clic en otro nodo para conectar"); return; }
+        if (selectedNode === nodeId) { setPendingConnection({ source: nodeId, target: nodeId }); setIsEdgeModalVisible(true); setSelectedNode(null); return; }
+        const exists = edges.some(edge => edge.source === selectedNode && edge.target === nodeId);
+        if (exists) { message.warning("Ya existe una arista entre estos nodos"); setSelectedNode(null); return; }
+        setPendingConnection({ source: selectedNode, target: nodeId });
+        setIsEdgeModalVisible(true);
+    };
+
+    const handleNodeContextMenu = (e: React.MouseEvent, nodeId: string) => {
+        e.preventDefault(); e.stopPropagation();
+        if (mode === 'editing') setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', id: nodeId });
+    };
+
+    const handleCreateEdge = () => {
+        if (!pendingConnection) return;
+        const w = edgeWeight ?? 1;
+        setEdges(prev => [...prev, {
+            id: `edge-${Date.now()}`, source: pendingConnection.source, target: pendingConnection.target,
+            weight: w.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 }
+        }]);
+        setIsEdgeModalVisible(false); setPendingConnection(null); setSelectedNode(null); setEdgeWeight(1);
+        message.success("Arista creada");
+    };
+
+    const handleDelete = () => {
+        if (contextMenu.type === 'node') {
+            setNodes(n => n.filter(nd => nd.id !== contextMenu.id));
+            setEdges(e => e.filter(ed => ed.source !== contextMenu.id && ed.target !== contextMenu.id));
+            message.success("Nodo eliminado");
+        } else {
+            setEdges(e => e.filter(ed => ed.id !== contextMenu.id));
+            message.success("Arista eliminada");
+        }
+        setContextMenu(c => ({ ...c, visible: false }));
+    };
+
+    const openEditModal = () => {
+        if (contextMenu.type === 'node') {
+            const node = nodes.find(n => n.id === contextMenu.id);
+            if (node) { setEditNodeData({ name: node.label, color: node.color }); setIsEditNodeModalVisible(true); }
+        } else {
+            const edge = edges.find(e => e.id === contextMenu.id);
+            if (edge) { setEditEdgeWeight(Number(edge.weight)); setIsEditEdgeModalVisible(true); }
+        }
+        setContextMenu(c => ({ ...c, visible: false }));
+    };
+
+    // Edge long press drag
+    const handleEdgeLabelPointerDown = (e: React.PointerEvent, edgeId: string) => {
+        if (mode !== 'editing' || isSimActive) return;
+        e.stopPropagation();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        edgeLongPressData.current = { timer: null, startX: e.clientX, startY: e.clientY };
+        edgeLongPressData.current.timer = setTimeout(() => {
+            setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', id: edgeId });
+        }, 500);
+        setDraggingEdge(edgeId);
+    };
+
+    const handleEdgeLabelPointerMove = (e: React.PointerEvent, edgeId: string) => {
+        const lp = edgeLongPressData.current;
+        if (lp.timer && (Math.abs(e.clientX - lp.startX) > 8 || Math.abs(e.clientY - lp.startY) > 8)) {
+            clearTimeout(lp.timer); lp.timer = null;
+        }
+        if (!draggingEdge) return;
+        const edge = edges.find(ed => ed.id === edgeId); if (!edge) return;
+        const src = nodes.find(n => n.id === edge.source); const tgt = nodes.find(n => n.id === edge.target); if (!src || !tgt) return;
+        const midX = (src.x + tgt.x) / 2; const midY = (src.y + tgt.y) / 2;
+        if (!canvasRef.current) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const dx = (e.clientX - rect.left) - midX; const dy = (e.clientY - rect.top) - midY;
+        setEdges(prev => prev.map(ed => ed.id === edgeId ? { ...ed, cpOffset: { dx, dy } } : ed));
+    };
+
+    const handleEdgeLabelPointerUp = () => {
+        if (edgeLongPressData.current.timer) { clearTimeout(edgeLongPressData.current.timer); edgeLongPressData.current.timer = null; }
+        setDraggingEdge(null);
+    };
+
+    const handleEdgeContextMenu = (e: React.MouseEvent, edgeId: string) => {
+        e.preventDefault(); e.stopPropagation();
+        if (mode === 'editing') setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', id: edgeId });
+    };
+
+    // Matrix edge change
+    const handleMatrixEdgeChange = (sourceId: string, targetId: string, value: string) => {
+        setEdges(prev => {
+            const idx = prev.findIndex(e => e.source === sourceId && e.target === targetId);
+            if (value === "") { return idx !== -1 ? prev.filter((_, i) => i !== idx) : prev; }
+            let num = parseFloat(value); if (isNaN(num)) num = 0;
+            if (idx !== -1) { const ne = [...prev]; ne[idx] = { ...ne[idx], weight: num.toString() }; return ne; }
+            return [...prev, { id: `edge-${Date.now()}-${Math.random()}`, source: sourceId, target: targetId, weight: num.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 } }];
+        });
+    };
+
+    // ── Edge geometry ─────────────────────────────────────────────────
+    const getEdgeGeometry = (edge: GraphEdge) => {
+        const src = nodes.find(n => n.id === edge.source);
+        const tgt = nodes.find(n => n.id === edge.target);
+        if (!src || !tgt) return null;
+        const isSimMode = isSimActive;
+        const R = isSimMode ? 35 : 25;
+
+        if (edge.source === edge.target) {
+            const lx = src.x + R + 30; const ly = src.y - R - 10;
+            const path = `M ${src.x + R},${src.y} C ${src.x + R + 60},${src.y - 60} ${src.x - 20},${src.y - 60} ${src.x},${src.y - R}`;
+            return { path, labelX: lx, labelY: ly, isLoop: true };
+        }
+
+        const dx = tgt.x - src.x; const dy = tgt.y - src.y;
+        const angle = Math.atan2(dy, dx);
+        const startX = src.x + Math.cos(angle) * R; const startY = src.y + Math.sin(angle) * R;
+        const endX = tgt.x - Math.cos(angle) * R; const endY = tgt.y - Math.sin(angle) * R;
+        const midX = (src.x + tgt.x) / 2; const midY = (src.y + tgt.y) / 2;
+        const isBiDir = edges.some(e => e.source === tgt.id && e.target === src.id);
+        const cpOff = edge.cpOffset ?? { dx: 0, dy: 0 };
+        const hasUserBend = cpOff.dx !== 0 || cpOff.dy !== 0;
+
+        let ctrlX: number; let ctrlY: number;
+        if (!hasUserBend && isBiDir) {
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            ctrlX = midX + (-dy / dist) * 40; ctrlY = midY + (dx / dist) * 40;
+        } else { ctrlX = midX + cpOff.dx; ctrlY = midY + cpOff.dy; }
+
+        const isStraight = !hasUserBend && !isBiDir;
+        const path = isStraight ? `M ${startX},${startY} L ${endX},${endY}` : `M ${startX},${startY} Q ${ctrlX},${ctrlY} ${endX},${endY}`;
+        const labelX = isStraight ? midX : 0.25 * startX + 0.5 * ctrlX + 0.25 * endX;
+        const labelY = isStraight ? midY - 12 : 0.25 * startY + 0.5 * ctrlY + 0.25 * endY;
+        return { path, labelX, labelY, isLoop: false };
+    };
+
+    const getEdgeColor = (edgeId: string) => {
+        const inSimOrDone = simState === 'running' || simState === 'paused' || simState === 'done';
+        if (!inSimOrDone) return '#2e186a';
+        if (criticalEdges.has(edgeId)) return '#ef4444';
+        if (activeEdge === edgeId) return '#8b5cf6';
+        return '#64748b';
+    };
+
+    return (
+        <Wrap>
+            {/* ── Simulation Controls Bar ───────────────────────────────── */}
+            <SimBar>
+                <div style={{ fontWeight: 700, color: '#2e186a', fontSize: '1rem', marginRight: 4 }}>
+                    🔁 CPM — Johnson
+                </div>
+                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
+
+                {/* Green start button — always visible */}
+                <Button
+                    type="primary"
+                    icon={<PlayCircleOutlined />}
+                    onClick={runSimulation}
+                    disabled={simState === 'running'}
+                    style={{ background: '#16a34a', borderColor: '#16a34a', borderRadius: 20 }}
+                >
+                    Comenzar simulación
+                </Button>
+
+                {/* Stop button — visible when running */}
+                <Button
+                    danger
+                    icon={<PauseCircleOutlined />}
+                    onClick={stopSimulation}
+                    disabled={simState !== 'running'}
+                    style={{ borderRadius: 20 }}
+                >
+                    Detener
+                </Button>
+
+                {/* Reset — always visible */}
+                <Button
+                    icon={<ReloadOutlined />}
+                    onClick={resetSimulation}
+                    style={{ borderRadius: 20, borderColor: '#8b5cf6', color: '#8b5cf6' }}
+                >
+                    Reiniciar
+                </Button>
+
+                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
+                <SimBarLabel>🐢</SimBarLabel>
+                <div style={{ width: 180 }}>
+                    <Slider
+                        min={10} max={1500} step={10}
+                        reverse
+                        value={simSpeed} onChange={setSimSpeed}
+                        tooltip={{ formatter: (v) => `${v}ms/paso` }}
+                        trackStyle={{ background: '#2e186a' }} handleStyle={{ borderColor: '#2e186a' }}
+                    />
+                </div>
+                <SimBarLabel>🐇</SimBarLabel>
+
+                {/* Save/Load — only if logged in */}
+                {user && (
+                    <>
+                        <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
+                        <Button size="small" icon={<SaveOutlined />} onClick={() => setIsSaveModalVisible(true)}
+                            style={{ borderRadius: 12, color: '#2e186a', borderColor: '#c4b5fd' }}>Guardar</Button>
+                        <Button size="small" icon={<FolderOpenOutlined />} onClick={openLoadModal}
+                            style={{ borderRadius: 12, color: '#2e186a', borderColor: '#c4b5fd' }}>Cargar</Button>
+                    </>
+                )}
+            </SimBar>
+
+
+            {/* ── Editor + Matrix ───────────────────────────────────────── */}
+            <EditorWrap>
+                {/* Canvas */}
+                <CanvasOuter>
+                    <CanvasSVG
+                        ref={canvasRef}
+                        mode={mode}
+                        showGrid={showGrid}
+                        onPointerDown={handleCanvasPointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerLeave={handlePointerUp}
+                    >
+                        {/* Floating panel */}
+                        <FloatingPanel visible={showPanel}>
+                            <span style={{ fontSize: '0.82rem', color: '#4a5568', fontWeight: 500 }}>Modo:</span>
+                            <Switch size="small"
+                                checkedChildren="Edición" unCheckedChildren="Creación"
+                                checked={mode === 'editing'}
+                                onChange={c => setMode(c ? 'editing' : 'creation')}
+                                disabled={isSimActive}
+                            />
+                            <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)' }} />
+                            <Button size="small" icon={<SettingOutlined />} type="text" onClick={() => setIsSettingsOpen(true)} style={{ color: '#2e186a' }} />
+                            <Button size="small" icon={<TableOutlined />} type="text"
+                                onClick={() => setShowMatrix(v => !v)}
+                                style={{ color: showMatrix ? '#2e186a' : '#a0aec0' }} />
+                        </FloatingPanel>
+                        <PanelToggle onClick={() => setShowPanel(v => !v)} title="Controles">
+                            <ControlOutlined />
+                        </PanelToggle>
+
+                        {/* SVG edges */}
+                        <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                            <defs>
+                                {edges.map(e => (
+                                    <marker key={e.id} id={`arrow-${e.id}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill={getEdgeColor(e.id)} />
+                                    </marker>
+                                ))}
+                            </defs>
+                            {edges.map(edge => {
+                                const geom = getEdgeGeometry(edge);
+                                if (!geom) return null;
+                                return (
+                                    <path key={edge.id} d={geom.path}
+                                        stroke={getEdgeColor(edge.id)}
+                                        strokeWidth={criticalEdges.has(edge.id) ? 3.5 : 2.5}
+                                        fill="none"
+                                        strokeDasharray={activeEdge === edge.id ? '6 3' : 'none'}
+                                        markerEnd={`url(#arrow-${edge.id})`}
+                                        style={{ transition: 'stroke 0.5s, stroke-width 0.3s' }}
+                                    />
+                                );
+                            })}
+                        </svg>
+
+                        {/* Edge labels */}
+                        {edges.map(edge => {
+                            const geom = getEdgeGeometry(edge);
+                            if (!geom) return null;
+                            const slack = slacks[edge.id];
+                            const isCrit = criticalEdges.has(edge.id);
+                            return (
+                                <EdgeLabelEl key={`label-${edge.id}`} x={geom.labelX} y={geom.labelY} mode={mode}
+                                    onContextMenu={e => handleEdgeContextMenu(e, edge.id)}
+                                    onPointerDown={e => handleEdgeLabelPointerDown(e, edge.id)}
+                                    onPointerMove={e => handleEdgeLabelPointerMove(e, edge.id)}
+                                    onPointerUp={handleEdgeLabelPointerUp}
+                                    style={{
+                                        cursor: mode === 'editing' ? (draggingEdge === edge.id ? 'grabbing' : 'grab') : 'default',
+                                        borderColor: isCrit ? '#ef4444' : '#c4b5fd',
+                                        color: isCrit ? '#ef4444' : '#2e186a',
+                                    }}>
+                                    {edge.weight}
+                                    {slack !== null && slack !== undefined && (
+                                        <SlackBadge critical={isCrit}>| h:{slack}</SlackBadge>
+                                    )}
+                                </EdgeLabelEl>
+                            );
+                        })}
+
+                        {/* Nodes */}
+                        {nodes.map(node => {
+                            const et = earlyTimes[node.id];
+                            const lt = lateTimes[node.id];
+                            const isCrit = criticalNodes.has(node.id) && simState === 'done';
+                            const isAct = activeNode === node.id;
+
+                            if (simState === 'running' || simState === 'paused' || simState === 'done') {
+                                return (
+                                    <CpmNode key={node.id} color={node.color}
+                                        isSelected={selectedNode === node.id}
+                                        isCritical={isCrit} isActive={isAct}
+                                        style={{ left: node.x, top: node.y }}
+                                        onPointerDown={e => handleNodePointerDown(e, node.id)}
+                                        onPointerMove={handleNodePointerMove}
+                                        onPointerUp={handleNodePointerUp}
+                                        onPointerLeave={handleNodePointerUp}
+                                        onClick={e => handleNodeClick(e, node.id)}
+                                        onContextMenu={e => handleNodeContextMenu(e, node.id)}
+                                    >
+                                        <CpmLabel color={node.color}>{node.label}</CpmLabel>
+                                        <CpmBottom>
+                                            <CpmCell etCell hasValue={et !== null && et !== undefined}>
+                                                {et !== null && et !== undefined ? et : '-'}
+                                            </CpmCell>
+                                            <CpmCell hasValue={lt !== null && lt !== undefined}>
+                                                {lt !== null && lt !== undefined ? lt : '-'}
+                                            </CpmCell>
+                                        </CpmBottom>
+                                    </CpmNode>
+                                );
+                            }
+
+                            return (
+                                <NodeCircle key={node.id} color={node.color}
+                                    isSelected={selectedNode === node.id}
+                                    style={{ left: node.x, top: node.y }}
+                                    onPointerDown={e => handleNodePointerDown(e, node.id)}
+                                    onPointerMove={handleNodePointerMove}
+                                    onPointerUp={handleNodePointerUp}
+                                    onPointerLeave={handleNodePointerUp}
+                                    onClick={e => handleNodeClick(e, node.id)}
+                                    onContextMenu={e => handleNodeContextMenu(e, node.id)}
+                                >
+                                    {node.label}
+                                </NodeCircle>
+                            );
+                        })}
+                    </CanvasSVG>
+
+                    {/* CPM Legend while sim running/done */}
+                    {isSimActive && (
+                        <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 16, fontSize: '0.75rem' }}>
+                            <span style={{ color: '#2e186a', fontWeight: 600 }}>
+                                <span style={{ background: '#eef2ff', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>ET</span> Tiempo Temprano
+                            </span>
+                            <span style={{ color: '#92400e', fontWeight: 600 }}>
+                                <span style={{ background: '#fef3c7', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>LT</span> Tiempo Tardío
+                            </span>
+                            <span style={{ color: '#ef4444', fontWeight: 600 }}>━ Camino Crítico (holgura = 0)</span>
+                        </div>
+                    )}
+                </CanvasOuter>
+
+                {/* Right column: matrix + instructions */}
+                {showMatrix && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: '0.7', minWidth: 0 }}>
+                        <AdjacencyMatrix nodes={nodes} edges={edges}
+                            editable={editableMatrix && !isSimActive}
+                            onEdgeChange={handleMatrixEdgeChange} />
+                        {showInstructions && (
+                            <div style={{
+                                background: 'white', borderRadius: 16, padding: '1.25rem',
+                                boxShadow: '0 4px 12px rgba(46,24,106,0.08)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                    <strong style={{ color: '#2e186a', fontSize: '0.9rem' }}><InfoCircleOutlined /> Instrucciones</strong>
+                                    <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setShowInstructions(false)} style={{ color: '#a0aec0' }} />
+                                </div>
+                                <p style={{ fontWeight: 600, color: '#4a5568', margin: '0.5rem 0 0.25rem', fontSize: '0.8rem' }}>Modo Creación</p>
+                                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.78rem', color: '#4a5568', lineHeight: '1.7' }}>
+                                    <li><b>Crear Nodo:</b> Clic en espacio vacío del lienzo.</li>
+                                    <li><b>Conectar Nodos:</b> Clic en un nodo para seleccionarlo, luego clic en otro.</li>
+                                    <li><b>Arista al mismo nodo:</b> Clic en un nodo ya seleccionado (bucle).</li>
+                                    <li><b>Matriz:</b> Edita los valores directamente para crear/eliminar aristas.</li>
+                                </ul>
+                                <p style={{ fontWeight: 600, color: '#4a5568', margin: '0.75rem 0 0.25rem', fontSize: '0.8rem' }}>Modo Edición</p>
+                                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.78rem', color: '#4a5568', lineHeight: '1.7' }}>
+                                    <li><b>Mover Nodos:</b> Arrastra un nodo a otra posición.</li>
+                                    <li><b>Ajustar Curvatura:</b> Arrastra el peso de una arista.</li>
+                                    <li><b>Editar / Eliminar:</b> Mantén presionado un nodo o arista.</li>
+                                </ul>
+                                <p style={{ fontWeight: 600, color: '#4a5568', margin: '0.75rem 0 0.25rem', fontSize: '0.8rem' }}>Simulación CPM</p>
+                                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.78rem', color: '#4a5568', lineHeight: '1.7' }}>
+                                    <li>El grafo debe ser un <b>DAG dirigido</b> con un fuente y un sumidero.</li>
+                                    <li>Presiona <b>Comenzar simulación</b> para animar el algoritmo.</li>
+                                    <li>Los nodos muestran: <b style={{ color: '#2e186a' }}>ET</b> (tiempo temprano) y <b style={{ color: '#92400e' }}>LT</b> (tiempo tardío).</li>
+                                    <li>Aristas en <b style={{ color: '#ef4444' }}>rojo</b> = camino crítico (holgura = 0).</li>
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </EditorWrap>
+
+            {/* ── Critical Path Summary ─────────────────────────────────── */}
+            {simState === 'done' && criticalPath.length > 0 && (
+                <SummaryPanel>
+                    <div style={{ fontWeight: 700, color: '#ef4444', marginBottom: 8, fontSize: '1rem' }}>
+                        🔴 Camino Crítico (Duración total: {earlyTimes[criticalPath[criticalPath.length - 1]] ?? '?'} unidades)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {criticalPath.map((nodeId, idx) => {
+                            const node = nodes.find(n => n.id === nodeId);
+                            return (
+                                <React.Fragment key={nodeId}>
+                                    <span style={{
+                                        background: node?.color, color: 'white', borderRadius: 8,
+                                        padding: '4px 12px', fontWeight: 700, fontSize: '0.9rem',
+                                        border: '2px solid #ef4444'
+                                    }}>
+                                        {node?.label ?? nodeId}
+                                        <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                                            {' '}(ET:{earlyTimes[nodeId] ?? '-'} / LT:{lateTimes[nodeId] ?? '-'})
+                                        </span>
+                                    </span>
+                                    {idx < criticalPath.length - 1 && <span style={{ color: '#ef4444', fontWeight: 700 }}>→</span>}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#64748b' }}>
+                        Las aristas del camino crítico tienen <b>holgura = 0</b>; cualquier retraso en ellas retrasa el proyecto completo.
+                    </div>
+                </SummaryPanel>
+            )}
+
+            {/* ── Context Menu ──────────────────────────────────────────── */}
+            {contextMenu.visible && (
+                <ContextMenuEl x={contextMenu.x} y={contextMenu.y} onClick={e => e.stopPropagation()}>
+                    <ContextMenuItemEl onClick={openEditModal}>
+                        <EditOutlined style={{ color: '#2e186a' }} />
+                        {contextMenu.type === 'node' ? 'Editar Nodo' : 'Editar Peso'}
+                    </ContextMenuItemEl>
+                    <ContextMenuItemEl onClick={handleDelete} style={{ color: '#f5222d' }}>
+                        <DeleteOutlined /> {contextMenu.type === 'node' ? 'Eliminar Nodo' : 'Eliminar Arista'}
+                    </ContextMenuItemEl>
+                </ContextMenuEl>
+            )}
+
+            {/* ── Edge Creation Modal ───────────────────────────────────── */}
+            <Modal title={<ModalTitle title="Crear Arista" />} open={isEdgeModalVisible}
+                onOk={handleCreateEdge} onCancel={() => { setIsEdgeModalVisible(false); setPendingConnection(null); setSelectedNode(null); }}
+                centered closeIcon={null}
+                footer={
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+                        <Button shape="round" onClick={() => { setIsEdgeModalVisible(false); setPendingConnection(null); setSelectedNode(null); }}>Cancelar</Button>
+                        <Button shape="round" type="primary" onClick={handleCreateEdge} style={{ background: '#2e186a', borderColor: '#2e186a' }}>Guardar</Button>
+                    </div>
+                }>
+                <div style={{ padding: '0.5rem 0' }}>
+                    <label style={{ color: '#4a5568' }}>Peso de la arista (duración):</label>
+                    <InputNumber value={edgeWeight} onChange={setEdgeWeight} onPressEnter={handleCreateEdge}
+                        autoFocus style={{ width: '100%', marginTop: 8 }} min={0} placeholder="Ej. 5" />
+                </div>
+            </Modal>
+
+            {/* ── Edit Node Modal ───────────────────────────────────────── */}
+            <Modal title={<ModalTitle title="Editar Nodo" />} open={isEditNodeModalVisible}
+                onOk={() => { setNodes(ns => ns.map(n => n.id === contextMenu.id ? { ...n, label: editNodeData.name, color: editNodeData.color } : n)); setIsEditNodeModalVisible(false); }}
+                onCancel={() => setIsEditNodeModalVisible(false)} centered closeIcon={null}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0.5rem 0' }}>
+                    <label style={{ color: '#4a5568' }}>Nombre del nodo:</label>
+                    <Input value={editNodeData.name} onChange={e => setEditNodeData(d => ({ ...d, name: e.target.value }))} />
+                    <label style={{ color: '#4a5568' }}>Color:</label>
+                    <input type="color" value={editNodeData.color}
+                        onChange={e => setEditNodeData(d => ({ ...d, color: e.target.value }))}
+                        style={{ width: 60, height: 36, border: 'none', borderRadius: 8, cursor: 'pointer' }} />
+                </div>
+            </Modal>
+
+            {/* ── Edit Edge Weight Modal ────────────────────────────────── */}
+            <Modal title={<ModalTitle title="Editar Peso" />} open={isEditEdgeModalVisible}
+                onOk={() => { if (editEdgeWeight !== null) { setEdges(es => es.map(e => e.id === contextMenu.id ? { ...e, weight: editEdgeWeight.toString() } : e)); } setIsEditEdgeModalVisible(false); }}
+                onCancel={() => setIsEditEdgeModalVisible(false)} centered closeIcon={null}>
+                <div style={{ padding: '0.5rem 0' }}>
+                    <InputNumber value={editEdgeWeight} onChange={setEditEdgeWeight} style={{ width: '100%' }} min={0} />
+                </div>
+            </Modal>
+
+            {/* ── Settings Modal ────────────────────────────────────────── */}
+            <Modal title={<ModalTitle title="Configuración" />} open={isSettingsOpen}
+                onCancel={() => setIsSettingsOpen(false)} footer={null} centered closeIcon={null}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0.5rem 0' }}>
+                    {[
+                        { label: 'Mostrar Cuadrícula', val: showGrid, set: setShowGrid },
+                        { label: 'Mostrar Instrucciones', val: showInstructions, set: setShowInstructions },
+                        { label: 'Editar Matriz Directamente', val: editableMatrix, set: setEditableMatrix },
+                    ].map(({ label, val, set }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#4a5568', fontWeight: 500 }}>{label}</span>
+                            <Switch checked={val} onChange={set} />
+                        </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#4a5568', fontWeight: 500 }}>Etiquetas</span>
+                        <Switch checkedChildren="Letras" unCheckedChildren="Números"
+                            checked={labelMode === 'letters'} onChange={c => setLabelMode(c ? 'letters' : 'numbers')} />
+                    </div>
+                    {/* JSON Export / Import — only for guests */}
+                    {!user && (
+                        <>
+                            <div style={{ borderTop: '1px solid #eee', margin: '0.5rem 0' }} />
+                            <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                <Button block icon={<DownloadOutlined />} onClick={handleExportJSON}>
+                                    Exportar JSON
+                                </Button>
+                                <Button block icon={<UploadOutlined />} onClick={() => importRef.current?.click()}>
+                                    Importar JSON
+                                </Button>
+                                <input
+                                    ref={importRef}
+                                    type="file"
+                                    accept=".json"
+                                    style={{ display: 'none' }}
+                                    onChange={handleImportJSON}
+                                />
+                            </div>
+                        </>
+                    )}
+                    <div style={{ borderTop: '1px solid #eee', paddingTop: 12, display: 'flex', justifyContent: 'center', gap: 12 }}>
+                        <Button danger shape="round" onClick={() => { setNodes([]); setEdges([]); resetSimulation(); setIsSettingsOpen(false); message.success("Lienzo borrado"); }}>
+                            Borrar Todo
+                        </Button>
+                        <Button shape="round" type="primary" onClick={() => setIsSettingsOpen(false)} style={{ background: '#2e186a', borderColor: '#2e186a' }}>
+                            Cerrar
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+
+            {/* ── Save Canvas Modal ─────────────────────────────────────── */}
+            <Modal
+                title={<ModalTitle title="💾 Guardar Pizarra" />}
+                open={isSaveModalVisible}
+                onOk={saveCanvas}
+                onCancel={() => setIsSaveModalVisible(false)}
+                centered closeIcon={null}
+                confirmLoading={savingCanvas}
+                okText="Guardar" cancelText="Cancelar"
+            >
+                <div style={{ padding: '0.5rem 0' }}>
+                    <label style={{ color: '#4a5568' }}>Nombre de la pizarra:</label>
+                    <Input
+                        value={canvasName} onChange={e => setCanvasName(e.target.value)}
+                        onPressEnter={saveCanvas} autoFocus
+                        placeholder="Ej. Proyecto de construcción"
+                        style={{ marginTop: 8 }}
+                    />
+                </div>
+            </Modal>
+
+            {/* ── Load Canvas Modal ─────────────────────────────────────── */}
+            <Modal
+                title={<ModalTitle title="📂 Cargar Pizarra" />}
+                open={isLoadModalVisible}
+                onCancel={() => setIsLoadModalVisible(false)}
+                footer={null} centered closeIcon={null}
+            >
+                <List
+                    loading={loadingCanvases}
+                    dataSource={canvasList}
+                    locale={{ emptyText: 'No hay pizarras guardadas' }}
+                    renderItem={item => (
+                        <List.Item
+                            actions={[
+                                <Button type="link" onClick={() => loadCanvas(item.id)}>Cargar</Button>,
+                                <Button type="link" danger onClick={() => deleteCanvasEntry(item.id)}>Eliminar</Button>,
+                            ]}
+                        >
+                            <List.Item.Meta
+                                title={item.name}
+                                description={new Date(item.created_at).toLocaleDateString('es')}
+                            />
+                        </List.Item>
+                    )}
+                />
+            </Modal>
+
+            {/* ── Export JSON Name Modal ────────────────────────────────── */}
+            <Modal
+                title={<ModalTitle title="💾 Exportar JSON" />}
+                open={isExportModalVisible}
+                onCancel={() => setIsExportModalVisible(false)}
+                footer={null}
+                centered
+                closeIcon={null}
+            >
+                <div style={{ padding: '0.5rem 0' }}>
+                    <label style={{ color: '#4a5568' }}>Nombre del archivo:</label>
+                    <Input
+                        value={exportFileName}
+                        onChange={e => setExportFileName(e.target.value)}
+                        onPressEnter={doExportJSON}
+                        autoFocus
+                        placeholder="Ej. mi-proyecto"
+                        addonAfter=".json"
+                        style={{ marginTop: 8 }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1.25rem' }}>
+                        <Button onClick={() => setIsExportModalVisible(false)}>Cancelar</Button>
+                        <Button
+                            type="primary"
+                            icon={<DownloadOutlined />}
+                            onClick={doExportJSON}
+                            style={{ background: '#2e186a', borderColor: '#2e186a' }}
+                        >
+                            Exportar
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        </Wrap >
+
+    );
+};
+
+export default Johnson;
