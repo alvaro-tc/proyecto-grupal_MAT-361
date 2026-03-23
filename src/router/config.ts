@@ -20,6 +20,11 @@ const routes = [
     component: "Johnson",
   },
   {
+    path: "/algorithms/assignment",
+    exact: true,
+    component: "Assignment",
+  },
+  {
     path: "/login",
     exact: true,
     component: "Login",

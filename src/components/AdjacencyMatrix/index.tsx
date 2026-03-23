@@ -108,6 +108,7 @@ interface Props {
     edges: GraphEdge[];
     editable?: boolean;
     onEdgeChange?: (sourceId: string, targetId: string, value: string) => void;
+    overrideMatrix?: (number | string | null)[][];
 }
 
 const InputCell = styled.input`
@@ -145,7 +146,7 @@ const InputCell = styled.input`
     -moz-appearance: textfield;
 `;
 
-const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange }: Props) => {
+const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange, overrideMatrix }: Props) => {
     if (nodes.length === 0) {
         return (
             <Wrap>
@@ -160,7 +161,7 @@ const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange }: Props
     // Build n×n matrix: cell[i][j] = sum of weights of directed edges i→j (or null if no connection)
     const n = nodes.length;
     const idx = Object.fromEntries(nodes.map((nd, i) => [nd.id, i]));
-    const matrix: (number | null)[][] = Array.from({ length: n }, () => Array(n).fill(null));
+    let matrix: (number | string | null)[][] = Array.from({ length: n }, () => Array(n).fill(null));
 
     edges.forEach(edge => {
         const r = idx[edge.source];
@@ -168,14 +169,19 @@ const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange }: Props
         if (r !== undefined && c !== undefined) {
             const w = parseFloat(edge.weight);
             const val = isNaN(w) ? 1 : w;
-            matrix[r][c] = matrix[r][c] === null ? val : matrix[r][c]! + val;
+            const current = matrix[r][c] as number | null;
+            matrix[r][c] = current === null ? val : current + val;
         }
     });
 
-    const rowSums = matrix.map(row => row.reduce<number>((a, b) => a + (b || 0), 0));
-    const colSums = nodes.map((_, c) => matrix.reduce<number>((a, row) => a + (row[c] || 0), 0));
-    const rowCounts = matrix.map(row => row.filter(v => v !== null).length);
-    const colCounts = nodes.map((_, c) => matrix.filter(row => row[c] !== null).length);
+    if (overrideMatrix) {
+        matrix = overrideMatrix;
+    }
+
+    const rowSums = matrix.map(row => row.reduce<number>((a, b) => a + (typeof b === 'number' ? b : 0), 0));
+    const colSums = nodes.map((_, c) => matrix.reduce<number>((a, row) => a + (typeof row[c] === 'number' ? row[c] as number : 0), 0));
+    const rowCounts = matrix.map(row => row.filter(v => v !== null && v !== '∞').length);
+    const colCounts = nodes.map((_, c) => matrix.filter(row => row[c] !== null && row[c] !== '∞').length);
 
     return (
         <Wrap>

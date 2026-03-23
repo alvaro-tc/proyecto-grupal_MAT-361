@@ -187,15 +187,13 @@ const GraphEditor = ({ withMatrix = false }: { withMatrix?: boolean }) => {
     const openContextMenu = (e: React.MouseEvent | React.PointerEvent, type: 'node' | 'edge', id: string) => {
         e.preventDefault();
         e.stopPropagation();
-        if (mode === 'editing') {
-            setContextMenu({
-                visible: true,
-                x: e.clientX,
-                y: e.clientY,
-                type,
-                id,
-            });
-        }
+        setContextMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            type,
+            id,
+        });
     };
 
     const handleNodeClick = (e: React.MouseEvent, nodeId: string) => {
@@ -251,7 +249,6 @@ const GraphEditor = ({ withMatrix = false }: { withMatrix?: boolean }) => {
     });
 
     const handleEdgeLabelPointerDown = (e: React.PointerEvent, edgeId: string) => {
-        if (mode !== 'editing') return;
         e.stopPropagation();
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 

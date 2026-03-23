@@ -9,8 +9,7 @@ import {
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { useAuth, API_URL } from "../../context/AuthContext";
-import AdjacencyMatrix from "../../components/AdjacencyMatrix";
-
+import CostMatrix from '../../components/CostMatrix';
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface GraphNode { id: string; x: number; y: number; label: string; color: string; }
 interface GraphEdge {
@@ -133,39 +132,7 @@ const NodeCircle = styled.div<{ color: string; isSelected: boolean; isCritical?:
   &:hover { transform: translate(-50%, -50%) scale(1.08); }
 `;
 
-// CPM node with 3-zone visualization
-const CpmNode = styled.div<{ color: string; isSelected: boolean; isCritical?: boolean; isActive?: boolean; }>`
-  position: absolute; width: 70px; height: 70px; border-radius: 12px;
-  transform: translate(-50%, -50%);
-  border: ${p => p.isCritical ? '2.5px solid #ef4444' : p.isSelected ? '2.5px solid #8b5cf6' : '2.5px solid #c7d2fe'};
-  overflow: hidden; cursor: pointer; user-select: none; touch-action: none;
-  z-index: 5; transition: border-color 0.3s, transform 0.15s;
-  display: flex; flex-direction: column;
-  box-shadow: 0 2px 8px rgba(46,24,106,0.13);
-  ${p => p.isActive && css`animation: ${pulse} 1s infinite;`}
-  &:hover { transform: translate(-50%, -50%) scale(1.05); }
-`;
 
-const CpmLabel = styled.div<{ color: string }>`
-  background: ${p => p.color}; color: white;
-  font-weight: 700; font-size: 0.8rem;
-  display: flex; align-items: center; justify-content: center;
-  height: 50%; border-bottom: 1.5px solid rgba(255,255,255,0.3);
-`;
-
-const CpmBottom = styled.div`
-  display: flex; height: 50%;
-`;
-
-const CpmCell = styled.div<{ etCell?: boolean; hasValue?: boolean }>`
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  font-size: 0.72rem; font-weight: 700;
-  background: ${p => p.etCell ? '#eef2ff' : '#fef3c7'};
-  color: ${p => p.hasValue ? (p.etCell ? '#2e186a' : '#92400e') : '#b0b8c9'};
-  border-left: ${p => p.etCell ? 'none' : '1px solid #e5e7eb'};
-  transition: all 0.3s ease;
-  animation: ${p => p.hasValue ? css`${fadeIn} 0.4s ease` : 'none'};
-`;
 
 interface EdgeLabelProps { x: number; y: number; mode: string; }
 const EdgeLabelEl = styled.div<EdgeLabelProps>`
@@ -178,12 +145,7 @@ const EdgeLabelEl = styled.div<EdgeLabelProps>`
   user-select: none; touch-action: none; z-index: 6;
 `;
 
-const SlackBadge = styled.span<{ critical: boolean }>`
-  display: inline-block; margin-left: 4px;
-  font-size: 0.65rem; font-weight: 600;
-  color: ${p => p.critical ? '#ef4444' : '#16a34a'};
-  opacity: 0.85;
-`;
+
 
 const SummaryPanel = styled.div`
   background: white; border-radius: 16px; padding: 1.25rem 1.5rem;
@@ -210,29 +172,67 @@ const ModalTitle = ({ title }: { title: string }) => (
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const COLORS = ["#2e186a", "#1890ff", "#52c41a", "#faad14", "#f5222d", "#722ed1", "#eb2f96", "#13c2c2"];
 
-function topologicalSort(nodes: GraphNode[], edges: GraphEdge[]): string[] | null {
-    const inDeg: Record<string, number> = {};
-    const adj: Record<string, string[]> = {};
-    nodes.forEach(n => { inDeg[n.id] = 0; adj[n.id] = []; });
-    edges.forEach(e => {
-        adj[e.source].push(e.target);
-        inDeg[e.target] = (inDeg[e.target] || 0) + 1;
-    });
-    const queue = nodes.filter(n => inDeg[n.id] === 0).map(n => n.id);
-    const order: string[] = [];
-    while (queue.length) {
-        const cur = queue.shift()!;
-        order.push(cur);
-        (adj[cur] || []).forEach(nxt => {
-            inDeg[nxt]--;
-            if (inDeg[nxt] === 0) queue.push(nxt);
-        });
+// O(N^3) Hungarian algorithm using potentials
+function hungarianAlgorithm(costMatrix: number[][]) {
+    const n = costMatrix.length;
+    const u = new Array(n + 1).fill(0);
+    const v = new Array(n + 1).fill(0);
+    const p = new Array(n + 1).fill(0);
+    const way = new Array(n + 1).fill(0);
+
+    for (let i = 1; i <= n; i++) {
+        p[0] = i;
+        let j0 = 0;
+        const minv = new Array(n + 1).fill(Infinity);
+        const used = new Array(n + 1).fill(false);
+
+        do {
+            used[j0] = true;
+            const i0 = p[j0];
+            let delta = Infinity;
+            let j1 = 0;
+
+            for (let j = 1; j <= n; j++) {
+                if (!used[j]) {
+                    const cur = costMatrix[i0 - 1][j - 1] - u[i0] - v[j];
+                    if (cur < minv[j]) {
+                        minv[j] = cur;
+                        way[j] = j0;
+                    }
+                    if (minv[j] < delta) {
+                        delta = minv[j];
+                        j1 = j;
+                    }
+                }
+            }
+
+            for (let j = 0; j <= n; j++) {
+                if (used[j]) {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+        } while (p[j0] !== 0);
+
+        do {
+            const j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0 !== 0);
     }
-    return order.length === nodes.length ? order : null; // null = cycle detected
+
+    const assignment = new Array(n);
+    for (let j = 1; j <= n; j++) {
+        assignment[p[j] - 1] = j - 1;
+    }
+    return assignment; // assignment[row] = col
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-const Johnson: React.FC = () => {
+const Assignment: React.FC = () => {
     useTranslation();
 
     // ── Graph state ──────────────────────────────────────────────────
@@ -296,21 +296,29 @@ const Johnson: React.FC = () => {
     const [editEdgeWeight, setEditEdgeWeight] = useState<number | null>(null);
     const [editEdgeWeightError, setEditEdgeWeightError] = useState(false);
     const [isEditEdgeModalVisible, setIsEditEdgeModalVisible] = useState(false);
-    const [isGoalModalVisible, setIsGoalModalVisible] = useState(false);
-    const [optimizationGoal, setOptimizationGoal] = useState<'min' | 'max'>('max');
 
     // ── Simulation state ─────────────────────────────────────────────
     const [simState, setSimState] = useState<SimState>('idle');
     const [simSpeed, setSimSpeed] = useState(1200); // slider value: 1500=slowest(left) 10=fastest(right)
     const simSpeedRef = useRef(310); // actual delay = 1510 - sliderValue
-    const [earlyTimes, setEarlyTimes] = useState<Record<string, number | null>>({});
-    const [lateTimes, setLateTimes] = useState<Record<string, number | null>>({});
-    const [slacks, setSlacks] = useState<Record<string, number | null>>({});
-    const [criticalEdges, setCriticalEdges] = useState<Set<string>>(new Set());
     const [activeNode, setActiveNode] = useState<string | null>(null);
     const [activeEdge, setActiveEdge] = useState<string | null>(null);
-    const [criticalPath, setCriticalPath] = useState<string[][]>([]);
-    const [criticalNodes, setCriticalNodes] = useState<Set<string>>(new Set());
+    
+    // Assignment specific state
+    const [displayMatrix, setDisplayMatrix] = useState<number[][] | null>(null);
+    const [simStepMsg, setSimStepMsg] = useState<string>('');
+    const [assignedEdges, setAssignedEdges] = useState<Set<string>>(new Set());
+    
+    // Simulation Modal state
+    const [simModalOpen, setSimModalOpen] = useState(false);
+    const [simSteps, setSimSteps] = useState<any[]>([]);
+    const [simStepIdx, setSimStepIdx] = useState(0);
+    const [autoPlay, setAutoPlay] = useState(false);
+    
+    // Goal Modal state
+    const [isGoalModalVisible, setIsGoalModalVisible] = useState(false);
+    const [optimizationGoal, setOptimizationGoal] = useState<'min' | 'max'>('min');
+
     const simAbort = useRef(false);
 
     const canvasRef = useRef<HTMLDivElement>(null);
@@ -320,6 +328,11 @@ const Johnson: React.FC = () => {
 
 
     const { user, token } = useAuth();
+
+    // Move uNodes and vNodes calculation up so they are available to validateGraph and runSimulation
+    const mid = (canvasRef.current?.offsetWidth || 800) / 2;
+    const uNodes = useMemo(() => nodes.filter(n => n.x < mid).sort((a, b) => a.y - b.y), [nodes, mid]);
+    const vNodes = useMemo(() => nodes.filter(n => n.x >= mid).sort((a, b) => a.y - b.y), [nodes, mid]);
 
     // Only block editing while simulation is actively running or paused
     // When 'done', the user can freely edit the graph and re-run
@@ -344,151 +357,166 @@ const Johnson: React.FC = () => {
     }, []);
     // Inverted: slider left=1500(slow) → delay=1510-1500=10ms  |  slider right=10(fast) → delay=1500ms
     // Wait — user wants left slow right fast: sliderValue high=slow, sliderValue low=fast
-    // delay = sliderValue (slider IS the delay, but displayed reversed)
     useEffect(() => { simSpeedRef.current = 1510 - simSpeed; }, [simSpeed]);
 
-    const sleep = () => new Promise<void>(res => setTimeout(res, simSpeedRef.current));
+    useEffect(() => {
+        if (!autoPlay || !simModalOpen || simSteps.length === 0) return;
+        const timer = setTimeout(() => {
+            setSimStepIdx(prev => {
+                if (prev < simSteps.length - 1) return prev + 1;
+                setAutoPlay(false);
+                return prev;
+            });
+        }, simSpeedRef.current);
+        return () => clearTimeout(timer);
+    }, [autoPlay, simModalOpen, simSteps.length, simStepIdx]);
 
     // ── Validate Graph ────────────────────────────────────────────────
     const validateGraph = useCallback((): string | null => {
         if (nodes.length < 2) return "El grafo debe tener al menos 2 nodos.";
-        const order = topologicalSort(nodes, edges);
-        if (!order) return "El grafo contiene ciclos. El CPM requiere un DAG (grafo acíclico dirigido).";
-        const inDeg: Record<string, number> = {};
-        const outDeg: Record<string, number> = {};
-        nodes.forEach(n => { inDeg[n.id] = 0; outDeg[n.id] = 0; });
-        edges.forEach(e => { inDeg[e.target]++; outDeg[e.source]++; });
-        const sources = nodes.filter(n => inDeg[n.id] === 0);
-        const sinks = nodes.filter(n => outDeg[n.id] === 0);
-        if (sources.length !== 1) return `El grafo debe tener exactamente UN nodo fuente (sin aristas entrantes). Encontrados: ${sources.length}.`;
-        if (sinks.length !== 1) return `El grafo debe tener exactamente UN nodo sumidero (sin aristas salientes). Encontrados: ${sinks.length}.`;
+        // Bipartite/Assignment: For Hungarian we need an NxN matrix, but we can balance it.
+        // We just need at least one edge.
+        if (edges.length === 0) return "El grafo debe tener al menos una arista (costo) para asignar.";
         return null;
     }, [nodes, edges]);
 
     // Derived: live validity for indicator badge
     const graphValid = useMemo(() => validateGraph() === null, [validateGraph]);
 
-    // ── Run CPM simulation ────────────────────────────────────────────
-    const runSimulation = useCallback(async (goal: 'min' | 'max' = 'max') => {
+    // ── Run Hungarian simulation (Step Generation) ────────────────────────
+    const runSimulation = useCallback((goal: 'min' | 'max') => {
         const err = validateGraph();
-        if (err) { Modal.error({ title: "Grafo inválido para CPM", content: err, centered: true }); return; }
+        if (err) { Modal.error({ title: "Grafo inválido", content: err, centered: true }); return; }
 
         simAbort.current = false;
-        setSimState('running');
+        setAssignedEdges(new Set());
+        setSimStepMsg('Preparando matriz de costos...');
 
-        const order = topologicalSort(nodes, edges)!;
-        const et: Record<string, number> = {};
-        const lt: Record<string, number> = {};
-        const newSlacks: Record<string, number> = {};
-
-        // Reset visuals
-        setEarlyTimes({});
-        setLateTimes({});
-        setSlacks({});
-        setCriticalEdges(new Set());
-        setCriticalPath([]);
-        setCriticalNodes(new Set());
-
-        // Build adjacency
-        const incoming: Record<string, GraphEdge[]> = {};
-        const outgoing: Record<string, GraphEdge[]> = {};
-        nodes.forEach(n => { incoming[n.id] = []; outgoing[n.id] = []; });
-        edges.forEach(e => { incoming[e.target].push(e); outgoing[e.source].push(e); });
-
-        // ── Forward pass ──────────────────────────────────────────────
-        for (const nodeId of order) {
-            if (simAbort.current) { setSimState('idle'); return; }
-            setActiveNode(nodeId);
-
-            const inc = incoming[nodeId];
-            let et_val = 0;
-            if (inc.length > 0) {
-                for (const edge of inc) {
-                    setActiveEdge(edge.id);
-                    await new Promise<void>(res => setTimeout(res, simSpeedRef.current * 0.4));
+        const U = uNodes.length;
+        const V = vNodes.length;
+        const N = Math.max(U, V);
+        
+        // Build NxN cost matrix with 1e9 as INF
+        const INF = 1e9;
+        const matrix: number[][] = Array(N).fill(0).map(() => Array(N).fill(INF));
+        const originalCost: number[][] = Array(N).fill(0).map(() => Array(N).fill(INF));
+        
+        let maxW = -Infinity;
+        if (goal === 'max') {
+            edges.forEach(e => {
+                const u = uNodes.findIndex(n => n.id === e.source);
+                const v = vNodes.findIndex(n => n.id === e.target);
+                if (u !== -1 && v !== -1) {
+                    const w = parseFloat(e.weight || '0');
+                    if (w > maxW) maxW = w;
                 }
-                et_val = goal === 'max'
-                    ? Math.max(...inc.map(e => (et[e.source] ?? 0) + parseFloat(e.weight || '1')))
-                    : Math.min(...inc.map(e => (et[e.source] ?? 0) + parseFloat(e.weight || '1')));
-            }
-            et[nodeId] = et_val;
-            setEarlyTimes(prev => ({ ...prev, [nodeId]: et_val }));
-            setActiveEdge(null);
-            await sleep();
+            });
+            if (maxW === -Infinity) maxW = 0;
         }
 
-        setActiveNode(null);
-
-        // ── Backward pass ─────────────────────────────────────────────
-        const sink = order[order.length - 1];
-        lt[sink] = et[sink];
-        setLateTimes({ [sink]: et[sink] });
-        await sleep();
-
-        for (let i = order.length - 2; i >= 0; i--) {
-            if (simAbort.current) { setSimState('idle'); return; }
-            const nodeId = order[i];
-            setActiveNode(nodeId);
-
-            const out = outgoing[nodeId];
-            for (const edge of out) {
-                setActiveEdge(edge.id);
-                await new Promise<void>(res => setTimeout(res, simSpeedRef.current * 0.4));
-            }
-
-            const lt_val = goal === 'max'
-                ? Math.min(...out.map(e => (lt[e.target] ?? 0) - parseFloat(e.weight || '1')))
-                : Math.max(...out.map(e => (lt[e.target] ?? 0) - parseFloat(e.weight || '1')));
-            lt[nodeId] = lt_val;
-            setLateTimes(prev => ({ ...prev, [nodeId]: lt_val }));
-            setActiveEdge(null);
-            await sleep();
-        }
-
-        setActiveNode(null);
-
-        // ── Calculate slacks & critical path ─────────────────────────
-        const critEdges = new Set<string>();
-        const critNodeSet = new Set<string>();
-        edges.forEach(edge => {
-            const w = parseFloat(edge.weight || '1');
-            const slack = goal === 'max'
-                ? (lt[edge.target] ?? 0) - (et[edge.source] ?? 0) - w
-                : (et[edge.source] ?? 0) + w - (lt[edge.target] ?? 0);
-            newSlacks[edge.id] = Math.round(slack * 1000) / 1000;
-            if (Math.abs(slack) < 0.001) {
-                critEdges.add(edge.id);
-                critNodeSet.add(edge.source);
-                critNodeSet.add(edge.target);
+        edges.forEach(e => {
+            const u = uNodes.findIndex(n => n.id === e.source);
+            const v = vNodes.findIndex(n => n.id === e.target);
+            if (u !== -1 && v !== -1) {
+                const w = parseFloat(e.weight || '0');
+                originalCost[u][v] = w;
+                matrix[u][v] = goal === 'max' ? maxW - w : w;
             }
         });
 
-        setSlacks(newSlacks);
-        setCriticalEdges(critEdges);
-        setCriticalNodes(critNodeSet);
-
-        // Build all critical paths
-        const critPaths: string[][] = [];
-        const dfs = (curNode: string, currentPath: string[]) => {
-            const outs = outgoing[curNode] || [];
-            const critOuts = outs.filter(e => critEdges.has(e.id));
-            if (critOuts.length === 0) {
-                critPaths.push([...currentPath]);
-                return;
+        // Add dummy zeros if unbalanced to fulfill standard Hungarian requirement
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < N; j++) {
+                if (i >= U || j >= V) {
+                    originalCost[i][j] = 0; 
+                    matrix[i][j] = goal === 'max' ? maxW : 0; 
+                }
             }
-            for (const edge of critOuts) {
-                currentPath.push(edge.target);
-                dfs(edge.target, currentPath);
-                currentPath.pop();
-            }
-        };
-        const startNode = order[0];
-        if (startNode) {
-            dfs(startNode, [startNode]);
         }
-        setCriticalPath(critPaths);
-        setSimState('done');
-    }, [nodes, edges, validateGraph]); // simSpeed intentionally omitted — read via simSpeedRef.current
+
+        const steps: any[] = [];
+        
+        const copyMat = (m: number[][]) => m.map(row => row.map(v => v >= INF/2 ? '∞' : v));
+        const createStep = (m: number[][], msg: string, props: any = {}) => ({
+            matrix: copyMat(m), msg, 
+            rowMins: [], colMins: [], lines: { row: [], col: [] }, highlightCells: [],
+            ...props
+        });
+
+        if (goal === 'max') {
+            steps.push(createStep(originalCost, "Paso Inicial: Matriz de Beneficios (Maximización)", { isInitial: true }));
+            steps.push(createStep(matrix, `Transformación para Maximizar: Restando valores al máximo beneficio (${maxW}) para minimizar costos relativos.`));
+        } else {
+            steps.push(createStep(matrix, "Paso Inicial: Matriz de Costos", { isInitial: true }));
+        }
+
+        // Step 1: Row Reduction
+        const rowMins = [];
+        for (let i = 0; i < N; i++) {
+            const minRow = Math.min(...matrix[i]);
+            rowMins.push(minRow === INF ? 0 : minRow);
+        }
+        steps.push(createStep(matrix, "Paso 1: Identificar mínimos por fila", { rowMins }));
+        
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < N; j++) {
+                if (matrix[i][j] !== INF) matrix[i][j] -= rowMins[i];
+            }
+        }
+        steps.push(createStep(matrix, "Paso 1: Restar el mínimo de cada fila"));
+
+        // Step 2: Col Reduction
+        const colMins = [];
+        for (let j = 0; j < N; j++) {
+            let minCol = INF;
+            for (let i = 0; i < N; i++) if (matrix[i][j] < minCol) minCol = matrix[i][j];
+            colMins.push(minCol === INF ? 0 : minCol);
+        }
+        steps.push(createStep(matrix, "Paso 2: Identificar mínimos por columna", { colMins }));
+
+        for (let j = 0; j < N; j++) {
+            for (let i = 0; i < N; i++) {
+                if (matrix[i][j] !== INF) matrix[i][j] -= colMins[j];
+            }
+        }
+        steps.push(createStep(matrix, "Paso 2: Restar el mínimo de cada columna"));
+
+        steps.push(createStep(matrix, "Calculando cobertura y ceros óptimos usando método húngaro completo..."));
+
+        // Final Assignment
+        const assignment = hungarianAlgorithm(matrix);
+        
+        const finalEdges = new Set<string>();
+        let totalCost = 0;
+        const highlights = [];
+        for (let i = 0; i < N; i++) {
+            const j = assignment[i];
+            if (i < U && j < V && originalCost[i][j] !== INF) {
+                const uNode = uNodes[i].id;
+                const vNode = vNodes[j].id;
+                const edge = edges.find(e => e.source === uNode && e.target === vNode);
+                if (edge) {
+                    finalEdges.add(edge.id);
+                    totalCost += originalCost[i][j];
+                }
+                highlights.push({ r: i, c: j, color: '#16a34a' });
+            }
+        }
+
+        const finalMsg = goal === 'max' 
+            ? `¡Asignación óptima encontrada! Ganancia máxima total: ${totalCost}`
+            : `¡Asignación óptima encontrada! Costo mínimo total: ${totalCost}`;
+
+        steps.push(createStep(originalCost, finalMsg, { 
+            highlightCells: highlights, finalEdges, totalCost 
+        }));
+
+        setSimSteps(steps);
+        setSimStepIdx(0);
+        setSimState('running');
+        setSimModalOpen(true);
+        setAutoPlay(true);
+    }, [uNodes, vNodes, edges, validateGraph]);
 
 
     const stopSimulation = () => {
@@ -503,12 +531,9 @@ const Johnson: React.FC = () => {
         setSimState('idle');
         setActiveNode(null);
         setActiveEdge(null);
-        setEarlyTimes({});
-        setLateTimes({});
-        setSlacks({});
-        setCriticalEdges(new Set());
-        setCriticalNodes(new Set());
-        setCriticalPath([]);
+        setAssignedEdges(new Set());
+        setDisplayMatrix(null);
+        setSimStepMsg('');
     };
 
     // ── Save / Load canvas ────────────────────────────────────────────────
@@ -688,23 +713,37 @@ const Johnson: React.FC = () => {
         if (isSimActive) return;
         if (longPressData.current.timer) { clearTimeout(longPressData.current.timer); longPressData.current.timer = null; }
         if (mode !== 'creation') return;
+        
+        // --- Bipartite Logic ---
+        const canvasWidth = canvasRef.current?.offsetWidth || 800;
+        const mid = canvasWidth / 2;
+        const srcNode = nodes.find(n => n.id === selectedNode);
+        const tgtNode = nodes.find(n => n.id === nodeId);
+        
+        if (srcNode && tgtNode) {
+            const isSrcLeft = srcNode.x < mid;
+            const isTgtLeft = tgtNode.x < mid;
+            if (isSrcLeft === isTgtLeft) {
+                message.error("Asignación inválida. Debes conectar un Origen (Izquierda) con un Destino (Derecha).");
+                setSelectedNode(null);
+                return;
+            }
+            if (!isSrcLeft && isTgtLeft) {
+                message.error("La dirección debe ser de Origen (Izquierda) a Destino (Derecha).");
+                setSelectedNode(null);
+                return;
+            }
+        }
+        
         if (!selectedNode) { setSelectedNode(nodeId); message.info("Haz clic en otro nodo para conectar"); return; }
-        // Block self-loops — CPM/Johnson requires a DAG
+        // Block self-loops
         if (selectedNode === nodeId) {
-            message.error("No se permiten bucles (self-loops). El CPM/Johnson requiere un grafo acíclico (DAG).");
+            message.error("No se permiten bucles. Un agente no puede asignarse a sí mismo en este editor.");
             setSelectedNode(null);
             return;
         }
         const exists = edges.some(edge => edge.source === selectedNode && edge.target === nodeId);
         if (exists) { message.warning("Ya existe una arista entre estos nodos"); setSelectedNode(null); return; }
-        // Block edges that would create a cycle
-        const hypotheticalEdge = { id: '__test__', source: selectedNode, target: nodeId, weight: '1', isDirected: true, cpOffset: { dx: 0, dy: 0 } };
-        const testOrder = topologicalSort(nodes, [...edges, hypotheticalEdge]);
-        if (!testOrder) {
-            message.error("Esta arista crearía un ciclo. El CPM/Johnson requiere un grafo acíclico dirigido (DAG).");
-            setSelectedNode(null);
-            return;
-        }
         setPendingConnection({ source: selectedNode, target: nodeId });
         setEdgeWeightError(false);
         setIsEdgeModalVisible(true);
@@ -806,7 +845,7 @@ const Johnson: React.FC = () => {
     const handleMatrixEdgeChange = (sourceId: string, targetId: string, value: string) => {
         // Block self-loops
         if (sourceId === targetId) {
-            message.error("No se permiten bucles (self-loops). El CPM/Johnson requiere un grafo acíclico (DAG).");
+            message.error("No se permiten bucles. Un agente no puede asignarse a sí mismo.");
             return;
         }
         setEdges(prev => {
@@ -818,13 +857,7 @@ const Johnson: React.FC = () => {
                 return prev;
             }
             if (idx !== -1) { const ne = [...prev]; ne[idx] = { ...ne[idx], weight: num.toString() }; return ne; }
-            // Check that the new edge won't create a cycle
             const hypotheticalEdge = { id: `edge-${Date.now()}-${Math.random()}`, source: sourceId, target: targetId, weight: num.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 } };
-            const testOrder = topologicalSort(nodes, [...prev, hypotheticalEdge]);
-            if (!testOrder) {
-                message.error("Esta arista crearía un ciclo. El CPM/Johnson requiere un grafo acíclico dirigido (DAG).");
-                return prev;
-            }
             return [...prev, hypotheticalEdge];
         });
     };
@@ -868,7 +901,7 @@ const Johnson: React.FC = () => {
     const getEdgeColor = (edgeId: string) => {
         const inSimOrDone = simState === 'running' || simState === 'paused' || simState === 'done';
         if (!inSimOrDone) return '#2e186a';
-        if (criticalEdges.has(edgeId)) return '#ef4444';
+        if (assignedEdges.has(edgeId)) return '#16a34a'; // Green for optimal
         if (activeEdge === edgeId) return '#8b5cf6';
         return '#64748b';
     };
@@ -878,7 +911,7 @@ const Johnson: React.FC = () => {
             {/* ── Simulation Controls Bar ───────────────────────────────── */}
             <SimBar>
                 <div style={{ fontWeight: 700, color: '#2e186a', fontSize: '1rem', marginRight: 4 }}>
-                    CPM — Johnson
+                    Método Húngaro (Asignación)
                 </div>
                 <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
 
@@ -1004,23 +1037,23 @@ const Johnson: React.FC = () => {
                             </div>
                             <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.5rem 0 0.25rem', fontSize: '0.9rem' }}>Modo Creación</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
-                                <li><b>Crear Nodo:</b> Clic en espacio vacío del lienzo.</li>
-                                <li><b>Conectar Nodos:</b> Clic en un nodo para seleccionarlo, luego clic en otro nodo.</li>
-                                <li><b>Matriz:</b> Edita los valores directamente para crear/eliminar aristas.</li>
-                                <li style={{ color: '#ea580c' }}><b>⚠ No se permiten</b> bucles, ciclos ni pesos negativos.</li>
+                                <li><b>Crear Nodo:</b> Clic en el lienzo. Representan agentes o tareas.</li>
+                                <li><b>Conectar Nodos:</b> Clic de un nodo a otro para definir el costo de asignación.</li>
+                                <li><b>Matriz:</b> Edita los costos directamente. Para el método húngaro, la matriz actúa como tabla de costos.</li>
+                                <li><b>Importante:</b> Todas las conexiones deben tener costo $\ge 0$.</li>
                             </ul>
                             <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Modo Edición</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
                                 <li><b>Mover Nodos:</b> Arrastra un nodo a otra posición.</li>
-                                <li><b>Ajustar Curvatura:</b> Arrastra el peso de una arista.</li>
+                                <li><b>Ajustar Curvatura:</b> Arrastra el costo de una arista.</li>
                                 <li><b>Editar / Eliminar:</b> Mantén presionado un nodo o arista.</li>
                             </ul>
-                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación CPM</p>
+                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación Húngara</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
-                                <li>El grafo debe ser un <b>DAG</b> con <b>un fuente</b> y <b>un sumidero</b>.</li>
-                                <li>El indicador <b>✅/⚠</b> en la barra muestra si el grafo es válido.</li>
-                                <li>Los nodos muestran: <b style={{ color: '#2e186a' }}>ET</b> y <b style={{ color: '#92400e' }}>LT</b>.</li>
-                                <li>Aristas en <b style={{ color: '#ef4444' }}>rojo</b> = camino crítico.</li>
+                                <li>Encuentra la asignación de costo mínimo ($N \to N$).</li>
+                                <li>Se balanceará la matriz automáticamente rellenando ceros si faltan aristas.</li>
+                                <li>Pasos: Reducción por filas, columnas, cobertura de ceros y asignación.</li>
+                                <li>Resultado: Aristas en <b style={{ color: '#16a34a' }}>verde</b> = asignación óptima.</li>
                             </ul>
                         </LeftSidebar>
                         {/* Drag handle between instructions and canvas */}
@@ -1062,6 +1095,21 @@ const Johnson: React.FC = () => {
                             <ControlOutlined />
                         </PanelToggle>
 
+                        {/* Middle Line Separator for Bipartite Graph */}
+                        <div style={{
+                            position: 'absolute', top: 0, bottom: 0, left: '50%',
+                            borderLeft: '2px dashed #cbd5e1', pointerEvents: 'none', zIndex: 0
+                        }} />
+                        {/* Area Labels */}
+                        <div style={{
+                            position: 'absolute', top: 16, left: '25%', transform: 'translateX(-50%)',
+                            fontWeight: 800, color: '#94a3b8', letterSpacing: '2px', fontSize: '1.5rem', pointerEvents: 'none', userSelect: 'none'
+                        }}>ORÍGENES</div>
+                        <div style={{
+                            position: 'absolute', top: 16, left: '75%', transform: 'translateX(-50%)',
+                            fontWeight: 800, color: '#94a3b8', letterSpacing: '2px', fontSize: '1.5rem', pointerEvents: 'none', userSelect: 'none'
+                        }}>DESTINOS</div>
+
                         {/* SVG edges */}
                         <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
                             <defs>
@@ -1077,7 +1125,7 @@ const Johnson: React.FC = () => {
                                 return (
                                     <path key={edge.id} d={geom.path}
                                         stroke={getEdgeColor(edge.id)}
-                                        strokeWidth={criticalEdges.has(edge.id) ? 3.5 : 2.5}
+                                        strokeWidth={assignedEdges.has(edge.id) ? 4.5 : 2.5}
                                         fill="none"
                                         strokeDasharray={activeEdge === edge.id ? '6 3' : 'none'}
                                         markerEnd={`url(#arrow-${edge.id})`}
@@ -1091,8 +1139,7 @@ const Johnson: React.FC = () => {
                         {edges.map(edge => {
                             const geom = getEdgeGeometry(edge);
                             if (!geom) return null;
-                            const slack = slacks[edge.id];
-                            const isCrit = criticalEdges.has(edge.id);
+                            const isAssigned = assignedEdges.has(edge.id);
                             return (
                                 <EdgeLabelEl key={`label-${edge.id}`} x={geom.labelX} y={geom.labelY} mode={mode}
                                     onContextMenu={e => handleEdgeContextMenu(e, edge.id)}
@@ -1101,53 +1148,22 @@ const Johnson: React.FC = () => {
                                     onPointerUp={handleEdgeLabelPointerUp}
                                     style={{
                                         cursor: mode === 'editing' ? (draggingEdge === edge.id ? 'grabbing' : 'grab') : 'default',
-                                        borderColor: isCrit ? '#ef4444' : '#c4b5fd',
-                                        color: isCrit ? '#ef4444' : '#2e186a',
+                                        borderColor: isAssigned ? '#16a34a' : '#c4b5fd',
+                                        color: isAssigned ? '#16a34a' : '#2e186a',
+                                        fontWeight: isAssigned ? 800 : 700,
                                     }}>
                                     {edge.weight}
-                                    {slack !== null && slack !== undefined && (
-                                        <SlackBadge critical={isCrit}>| h:{slack}</SlackBadge>
-                                    )}
                                 </EdgeLabelEl>
                             );
                         })}
 
                         {/* Nodes */}
                         {nodes.map(node => {
-                            const et = earlyTimes[node.id];
-                            const lt = lateTimes[node.id];
-                            const isCrit = criticalNodes.has(node.id) && simState === 'done';
                             const isAct = activeNode === node.id;
-
-                            if (simState === 'running' || simState === 'paused' || simState === 'done') {
-                                return (
-                                    <CpmNode key={node.id} color={node.color}
-                                        isSelected={selectedNode === node.id}
-                                        isCritical={isCrit} isActive={isAct}
-                                        style={{ left: node.x, top: node.y }}
-                                        onPointerDown={e => handleNodePointerDown(e, node.id)}
-                                        onPointerMove={handleNodePointerMove}
-                                        onPointerUp={handleNodePointerUp}
-                                        onPointerLeave={handleNodePointerUp}
-                                        onClick={e => handleNodeClick(e, node.id)}
-                                        onContextMenu={e => handleNodeContextMenu(e, node.id)}
-                                    >
-                                        <CpmLabel color={node.color}>{node.label}</CpmLabel>
-                                        <CpmBottom>
-                                            <CpmCell etCell hasValue={et !== null && et !== undefined}>
-                                                {et !== null && et !== undefined ? et : '-'}
-                                            </CpmCell>
-                                            <CpmCell hasValue={lt !== null && lt !== undefined}>
-                                                {lt !== null && lt !== undefined ? lt : '-'}
-                                            </CpmCell>
-                                        </CpmBottom>
-                                    </CpmNode>
-                                );
-                            }
-
                             return (
                                 <NodeCircle key={node.id} color={node.color}
                                     isSelected={selectedNode === node.id}
+                                    isActive={isAct}
                                     style={{ left: node.x, top: node.y }}
                                     onPointerDown={e => handleNodePointerDown(e, node.id)}
                                     onPointerMove={handleNodePointerMove}
@@ -1162,16 +1178,12 @@ const Johnson: React.FC = () => {
                         })}
                     </CanvasSVG>
 
-                    {/* CPM Legend while sim running/done */}
+                    {/* Sim Legend / Status */}
                     {isSimActive && (
-                        <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 16, fontSize: '0.75rem' }}>
-                            <span style={{ color: '#2e186a', fontWeight: 600 }}>
-                                <span style={{ background: '#eef2ff', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>ET</span> Tiempo Temprano
+                        <div style={{ padding: '10px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 16, fontSize: '0.86rem', alignItems: 'center' }}>
+                            <span style={{ color: '#2e186a', fontWeight: 700 }}>
+                                Estado: <span style={{ color: '#4f46e5', fontWeight: 600 }}>{simStepMsg}</span>
                             </span>
-                            <span style={{ color: '#92400e', fontWeight: 600 }}>
-                                <span style={{ background: '#fef3c7', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>LT</span> Tiempo Tardío
-                            </span>
-                            <span style={{ color: '#ef4444', fontWeight: 600 }}>━ Camino Crítico (holgura = 0)</span>
                         </div>
                     )}
                 </CanvasOuter>
@@ -1179,53 +1191,52 @@ const Johnson: React.FC = () => {
                 {/* Right column: matrix, resizable */}
                 {showMatrix && (
                     <>
-                        {/* Drag handle between canvas and matrix — LEFT edge of matrix panel */}
+                        {/* Drag handle between canvas and matrix */}
                         <ResizeHandle
                             axis="h"
                             onMouseDown={e => startResize('right', e)}
                             title="Arrastra para redimensionar la matriz"
                         />
                         <RightPanel w={rightWidth}>
-                            <AdjacencyMatrix nodes={nodes} edges={edges}
+                            <CostMatrix 
+                                uNodes={uNodes} 
+                                vNodes={vNodes} 
+                                edges={edges}
                                 editable={editableMatrix && !isSimActive}
-                                onEdgeChange={handleMatrixEdgeChange} />
+                                onEdgeChange={handleMatrixEdgeChange}
+                                overrideMatrix={displayMatrix ? displayMatrix.map(row => row.map(v => v >= 1e8 ? '∞' : v)) : undefined} 
+                            />
                         </RightPanel>
                     </>
                 )}
             </EditorWrap>
 
-            {/* ── Critical Path Summary ─────────────────────────────────── */}
-            {simState === 'done' && criticalPath.length > 0 && (
+            {/* ── Assignment Summary ─────────────────────────────────── */}
+            {simState === 'done' && assignedEdges.size > 0 && (
                 <SummaryPanel>
-                    <div style={{ fontWeight: 700, color: '#ef4444', marginBottom: 8, fontSize: '1rem' }}>
-                        🔴 {criticalPath.length > 1 ? 'Caminos Críticos' : 'Camino Crítico'} (Duración total: {earlyTimes[criticalPath[0][criticalPath[0].length - 1]] ?? '?'} unidades)
+                    <div style={{ fontWeight: 700, color: '#16a34a', marginBottom: 8, fontSize: '1.2rem' }}>
+                        ✅ {simStepMsg}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {criticalPath.map((path, pIdx) => (
-                            <div key={pIdx} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                {path.map((nodeId, idx) => {
-                                    const node = nodes.find(n => n.id === nodeId);
-                                    return (
-                                        <React.Fragment key={`${pIdx}-${nodeId}`}>
-                                            <span style={{
-                                                background: node?.color, color: 'white', borderRadius: 8,
-                                                padding: '4px 12px', fontWeight: 700, fontSize: '0.9rem',
-                                                border: '2px solid #ef4444'
-                                            }}>
-                                                {node?.label ?? nodeId}
-                                                <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                                                    {' '}(ET:{earlyTimes[nodeId] ?? '-'} / LT:{lateTimes[nodeId] ?? '-'})
-                                                </span>
-                                            </span>
-                                            {idx < path.length - 1 && <span style={{ color: '#ef4444', fontWeight: 700 }}>→</span>}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </div>
-                        ))}
-                    </div>
-                    <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#64748b' }}>
-                        Las aristas de {criticalPath.length > 1 ? 'los caminos críticos' : 'este camino crítico'} tienen <b>holgura = 0</b>; cualquier retraso en ellas retrasa el proyecto completo.
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {Array.from(assignedEdges).map(edgeId => {
+                            const edge = edges.find(e => e.id === edgeId);
+                            if (!edge) return null;
+                            const src = nodes.find(n => n.id === edge.source);
+                            const tgt = nodes.find(n => n.id === edge.target);
+                            return (
+                                <div key={edgeId} style={{
+                                    display: 'flex', alignItems: 'center', gap: 8, background: '#f0fdf4',
+                                    border: '1px solid #86efac', padding: '6px 14px', borderRadius: 8
+                                }}>
+                                    <span style={{ fontWeight: 700, color: src?.color }}>{src?.label}</span>
+                                    <span style={{ color: '#16a34a', fontWeight: 800 }}>→</span>
+                                    <span style={{ fontWeight: 700, color: tgt?.color }}>{tgt?.label}</span>
+                                    <span style={{ background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, marginLeft: 4 }}>
+                                        Costo: {edge.weight}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </SummaryPanel>
             )}
@@ -1426,9 +1437,8 @@ const Johnson: React.FC = () => {
                     </div>
                 </div>
             </Modal>
-
             {/* ── Goal Modal (Minimize vs Maximize) ────────────────────────── */}
-            <Modal
+            <Modal 
                 title={<ModalTitle title="Objetivo de Optimización" />}
                 open={isGoalModalVisible}
                 onCancel={() => setIsGoalModalVisible(false)}
@@ -1442,37 +1452,98 @@ const Johnson: React.FC = () => {
             >
                 <div style={{ padding: '1rem 0' }}>
                     <p style={{ color: '#4a5568', marginBottom: '1rem' }}>
-                        Selecciona el objetivo para la búsqueda de rutas:
+                        Selecciona el objetivo para tu problema de asignación:
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <div
-                            style={{
-                                padding: '12px 16px',
-                                border: '2px solid ' + (optimizationGoal === 'max' ? '#2e186a' : '#e2e8f0'),
-                                borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s'
-                            }}
-                            onClick={() => setOptimizationGoal('max')}
-                        >
-                            <input type="radio" checked={optimizationGoal === 'max'} readOnly style={{ marginRight: 10 }} />
-                            <strong>Maximizar (CPM Clásico)</strong> <span style={{ color: '#718096' }}>(ej. Ruta Crítica, Proyecto más largo)</span>
-                        </div>
-                        <div
-                            style={{
-                                padding: '12px 16px',
-                                border: '2px solid ' + (optimizationGoal === 'min' ? '#2e186a' : '#e2e8f0'),
-                                borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s'
+                        <div 
+                            style={{ 
+                                padding: '12px 16px', 
+                                border: '2px solid ' + (optimizationGoal === 'min' ? '#2e186a' : '#e2e8f0'), 
+                                borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' 
                             }}
                             onClick={() => setOptimizationGoal('min')}
                         >
                             <input type="radio" checked={optimizationGoal === 'min'} readOnly style={{ marginRight: 10 }} />
-                            <strong>Minimizar</strong> <span style={{ color: '#718096' }}>(ej. Rutas más cortas, Distancias, Tiempos mínimos)</span>
+                            <strong>Minimizar</strong> <span style={{ color: '#718096' }}>(ej. Costos, Distancias, Tiempos)</span>
+                        </div>
+                        <div 
+                            style={{ 
+                                padding: '12px 16px', 
+                                border: '2px solid ' + (optimizationGoal === 'max' ? '#2e186a' : '#e2e8f0'), 
+                                borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' 
+                            }}
+                            onClick={() => setOptimizationGoal('max')}
+                        >
+                            <input type="radio" checked={optimizationGoal === 'max'} readOnly style={{ marginRight: 10 }} />
+                            <strong>Maximizar</strong> <span style={{ color: '#718096' }}>(ej. Ganancias, Beneficios, Eficiencias)</span>
                         </div>
                     </div>
                 </div>
+            </Modal>
+
+            {/* ── Simulation Modal ────────────────────────────────────────── */}
+            <Modal
+                title={<ModalTitle title="Simulación: Método Húngaro" />}
+                open={simModalOpen}
+                onCancel={() => {
+                    setSimModalOpen(false);
+                    setAutoPlay(false);
+                    setSimState('done');
+                    // Applies final assignment explicitly
+                    if (simSteps.length > 0) {
+                        const finalStep = simSteps[simSteps.length - 1];
+                        if (finalStep.finalEdges) setAssignedEdges(finalStep.finalEdges);
+                        if (finalStep.msg) setSimStepMsg(finalStep.msg);
+                    }
+                }}
+                footer={null}
+                width={700}
+                centered
+                destroyOnClose
+            >
+                {simSteps.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
+                        <div style={{ 
+                            background: '#eef2ff', color: '#2e186a', padding: '12px 16px', 
+                            borderRadius: 8, fontWeight: 600, textAlign: 'center' 
+                        }}>
+                            {simSteps[simStepIdx].msg}
+                        </div>
+                        
+                        <CostMatrix 
+                            uNodes={uNodes}
+                            vNodes={vNodes}
+                            edges={[]}
+                            overrideMatrix={simSteps[simStepIdx].matrix}
+                            rowMins={simSteps[simStepIdx].rowMins}
+                            colMins={simSteps[simStepIdx].colMins}
+                            lines={simSteps[simStepIdx].lines}
+                            highlightCells={simSteps[simStepIdx].highlightCells}
+                        />
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                            <Button 
+                                type="primary" 
+                                shape="circle" 
+                                icon={autoPlay ? <PauseCircleOutlined /> : <PlayCircleOutlined />} 
+                                onClick={() => setAutoPlay(!autoPlay)}
+                                style={{ background: '#2e186a' }}
+                            />
+                            <Slider 
+                                style={{ flex: 1 }}
+                                min={0} 
+                                max={simSteps.length - 1} 
+                                value={simStepIdx} 
+                                onChange={v => { setSimStepIdx(v); setAutoPlay(false); }} 
+                                tooltip={{ formatter: (val) => "Paso " + (val! + 1) }}
+                            />
+                        </div>
+                    </div>
+                )}
             </Modal>
         </Wrap >
 
     );
 };
 
-export default Johnson;
+export default Assignment;

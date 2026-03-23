@@ -132,10 +132,24 @@ const Header = ({ t }: { t: TFunction }) => {
                     borderRadius: '8px',
                     fontFamily: "'Motiva Sans Bold', serif",
                     color: '#2e186a',
+                    marginBottom: '4px',
                     fontSize: '0.95rem'
                   }}
                 >
                   <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>🔁</span> Johnson (CPM)
+                </AntMenu.Item>
+                <AntMenu.Item
+                  key="assignment"
+                  onClick={() => { history.push('/algorithms/assignment'); setVisibility(false); }}
+                  style={{
+                    padding: '12px 20px',
+                    borderRadius: '8px',
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: '#2e186a',
+                    fontSize: '0.95rem'
+                  }}
+                >
+                  <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>🎯</span> Asignación (Húngaro)
                 </AntMenu.Item>
               </AntMenu>
             }
@@ -221,7 +235,21 @@ const Header = ({ t }: { t: TFunction }) => {
       <Container>
         <Row justify="space-between">
           <LogoContainer to="/" aria-label="homepage">
-            <LogoText>Algoritmos</LogoText>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="36" height="36" style={{ borderRadius: '8px' }}>
+                <rect width="512" height="512" rx="100" fill="#2e186a" />
+                <g stroke="#ffffff" strokeWidth="32" strokeLinecap="round" fill="none">
+                  <path d="M128 128 L384 128 L384 384 L128 384 Z" />
+                  <path d="M128 128 L384 384" />
+                  <path d="M128 384 L384 128" />
+                </g>
+                <circle cx="128" cy="128" r="48" fill="#14b8a6" />
+                <circle cx="384" cy="128" r="48" fill="#ec4899" />
+                <circle cx="384" cy="384" r="48" fill="#3b82f6" />
+                <circle cx="128" cy="384" r="48" fill="#f59e0b" />
+              </svg>
+              <LogoText>Algoritmos</LogoText>
+            </div>
           </LogoContainer>
           <NotHidden>
             <MenuItem />
