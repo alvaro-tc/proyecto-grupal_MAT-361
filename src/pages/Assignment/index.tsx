@@ -172,64 +172,7 @@ const ModalTitle = ({ title }: { title: string }) => (
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const COLORS = ["#2e186a", "#1890ff", "#52c41a", "#faad14", "#f5222d", "#722ed1", "#eb2f96", "#13c2c2"];
 
-// O(N^3) Hungarian algorithm using potentials
-function hungarianAlgorithm(costMatrix: number[][]) {
-    const n = costMatrix.length;
-    const u = new Array(n + 1).fill(0);
-    const v = new Array(n + 1).fill(0);
-    const p = new Array(n + 1).fill(0);
-    const way = new Array(n + 1).fill(0);
 
-    for (let i = 1; i <= n; i++) {
-        p[0] = i;
-        let j0 = 0;
-        const minv = new Array(n + 1).fill(Infinity);
-        const used = new Array(n + 1).fill(false);
-
-        do {
-            used[j0] = true;
-            const i0 = p[j0];
-            let delta = Infinity;
-            let j1 = 0;
-
-            for (let j = 1; j <= n; j++) {
-                if (!used[j]) {
-                    const cur = costMatrix[i0 - 1][j - 1] - u[i0] - v[j];
-                    if (cur < minv[j]) {
-                        minv[j] = cur;
-                        way[j] = j0;
-                    }
-                    if (minv[j] < delta) {
-                        delta = minv[j];
-                        j1 = j;
-                    }
-                }
-            }
-
-            for (let j = 0; j <= n; j++) {
-                if (used[j]) {
-                    u[p[j]] += delta;
-                    v[j] -= delta;
-                } else {
-                    minv[j] -= delta;
-                }
-            }
-            j0 = j1;
-        } while (p[j0] !== 0);
-
-        do {
-            const j1 = way[j0];
-            p[j0] = p[j1];
-            j0 = j1;
-        } while (j0 !== 0);
-    }
-
-    const assignment = new Array(n);
-    for (let j = 1; j <= n; j++) {
-        assignment[p[j] - 1] = j - 1;
-    }
-    return assignment; // assignment[row] = col
-}
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const Assignment: React.FC = () => {
@@ -308,6 +251,8 @@ const Assignment: React.FC = () => {
     const [displayMatrix, setDisplayMatrix] = useState<number[][] | null>(null);
     const [simStepMsg, setSimStepMsg] = useState<string>('');
     const [assignedEdges, setAssignedEdges] = useState<Set<string>>(new Set());
+    const [allSolutions, setAllSolutions] = useState<any[]>([]);
+    const [activeSolutionIdx, setActiveSolutionIdx] = useState(0);
     
     // Simulation Modal state
     const [simModalOpen, setSimModalOpen] = useState(false);
@@ -396,6 +341,12 @@ const Assignment: React.FC = () => {
         const V = vNodes.length;
         const N = Math.max(U, V);
         
+        // Creado de nodos simulados para visualización (Ficticios) si no es nxn
+        const simUNodes = [...uNodes];
+        const simVNodes = [...vNodes];
+        for (let i = U; i < N; i++) simUNodes.push({ id: `dummy-u-${i}`, label: `F${i - U + 1}`, color: '#94a3b8', x: 0, y: 0 });
+        for (let i = V; i < N; i++) simVNodes.push({ id: `dummy-v-${i}`, label: `F${i - V + 1}`, color: '#94a3b8', x: 0, y: 0 });
+
         // Build NxN cost matrix with 1e9 as INF
         const INF = 1e9;
         const matrix: number[][] = Array(N).fill(0).map(() => Array(N).fill(INF));
@@ -424,7 +375,17 @@ const Assignment: React.FC = () => {
             }
         });
 
-        // Add dummy zeros if unbalanced to fulfill standard Hungarian requirement
+        const steps: any[] = [];
+        const copyMat = (m: number[][]) => m.map(row => row.map(v => v >= INF/2 ? '∞' : v));
+        const createStep = (m: number[][], msg: string, props: any = {}) => ({
+            matrix: copyMat(m), msg, 
+            rowMins: [], colMins: [], lines: { row: [], col: [] }, highlightCells: [],
+            simUNodes, simVNodes,
+            ...props
+        });
+
+        // Add dummy zeros if unbalanced
+        const isUnbalanced = U !== V;
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < N; j++) {
                 if (i >= U || j >= V) {
@@ -434,20 +395,15 @@ const Assignment: React.FC = () => {
             }
         }
 
-        const steps: any[] = [];
-        
-        const copyMat = (m: number[][]) => m.map(row => row.map(v => v >= INF/2 ? '∞' : v));
-        const createStep = (m: number[][], msg: string, props: any = {}) => ({
-            matrix: copyMat(m), msg, 
-            rowMins: [], colMins: [], lines: { row: [], col: [] }, highlightCells: [],
-            ...props
-        });
+        if (isUnbalanced) {
+            steps.push(createStep(originalCost, `Al no ser una matriz cuadrada nxn (${U}x${V}), como primer paso se crean destinos o recuersos ficticios con costo 0 balanceando a ${N}x${N}.`, { isInitial: true }));
+        }
 
         if (goal === 'max') {
-            steps.push(createStep(originalCost, "Paso Inicial: Matriz de Beneficios (Maximización)", { isInitial: true }));
-            steps.push(createStep(matrix, `Transformación para Maximizar: Restando valores al máximo beneficio (${maxW}) para minimizar costos relativos.`));
+            if (!isUnbalanced) steps.push(createStep(originalCost, "Paso Inicial: Matriz de Beneficios (Maximización)", { isInitial: true }));
+            steps.push(createStep(matrix, `Transformación para Maximizar: Restamos los valores al beneficio máximo (${maxW}) para convertirlo en problema de minimización.`));
         } else {
-            steps.push(createStep(matrix, "Paso Inicial: Matriz de Costos", { isInitial: true }));
+            if (!isUnbalanced) steps.push(createStep(matrix, "Paso Inicial: Matriz de Costos", { isInitial: true }));
         }
 
         // Step 1: Row Reduction
@@ -456,14 +412,14 @@ const Assignment: React.FC = () => {
             const minRow = Math.min(...matrix[i]);
             rowMins.push(minRow === INF ? 0 : minRow);
         }
-        steps.push(createStep(matrix, "Paso 1: Identificar mínimos por fila", { rowMins }));
+        steps.push(createStep(matrix, "Reducción por filas: Identificamos el mínimo de cada fila.", { rowMins }));
         
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < N; j++) {
                 if (matrix[i][j] !== INF) matrix[i][j] -= rowMins[i];
             }
         }
-        steps.push(createStep(matrix, "Paso 1: Restar el mínimo de cada fila"));
+        steps.push(createStep(matrix, "Reducción por filas: Restamos el mínimo de cada fila a todos sus elementos."));
 
         // Step 2: Col Reduction
         const colMins = [];
@@ -472,44 +428,161 @@ const Assignment: React.FC = () => {
             for (let i = 0; i < N; i++) if (matrix[i][j] < minCol) minCol = matrix[i][j];
             colMins.push(minCol === INF ? 0 : minCol);
         }
-        steps.push(createStep(matrix, "Paso 2: Identificar mínimos por columna", { colMins }));
+        steps.push(createStep(matrix, "Reducción por columnas: Identificamos el mínimo de cada columna.", { colMins }));
 
         for (let j = 0; j < N; j++) {
             for (let i = 0; i < N; i++) {
                 if (matrix[i][j] !== INF) matrix[i][j] -= colMins[j];
             }
         }
-        steps.push(createStep(matrix, "Paso 2: Restar el mínimo de cada columna"));
+        steps.push(createStep(matrix, "Reducción por columnas: Restamos el mínimo de cada columna a todos sus elementos."));
 
-        steps.push(createStep(matrix, "Calculando cobertura y ceros óptimos usando método húngaro completo..."));
-
-        // Final Assignment
-        const assignment = hungarianAlgorithm(matrix);
-        
-        const finalEdges = new Set<string>();
-        let totalCost = 0;
-        const highlights = [];
-        for (let i = 0; i < N; i++) {
-            const j = assignment[i];
-            if (i < U && j < V && originalCost[i][j] !== INF) {
-                const uNode = uNodes[i].id;
-                const vNode = vNodes[j].id;
-                const edge = edges.find(e => e.source === uNode && e.target === vNode);
-                if (edge) {
-                    finalEdges.add(edge.id);
-                    totalCost += originalCost[i][j];
+        // Helper para trazar líneas (König's theorem)
+        const getMinLines = (mat: number[][]) => {
+            const matchR = Array(N).fill(-1);
+            const matchC = Array(N).fill(-1);
+            const dfs = (r: number, visited: boolean[]) => {
+                for (let c = 0; c < N; c++) {
+                    if (mat[r][c] === 0 && !visited[c]) {
+                        visited[c] = true;
+                        if (matchC[c] < 0 || dfs(matchC[c], visited)) {
+                            matchC[c] = r;
+                            matchR[r] = c;
+                            return true;
+                        }
+                    }
                 }
-                highlights.push({ r: i, c: j, color: '#16a34a' });
+                return false;
             }
+            let matchCount = 0;
+            for (let i = 0; i < N; i++) {
+                if (dfs(i, Array(N).fill(false))) matchCount++;
+            }
+            const rowCover = Array(N).fill(false);
+            const colCover = Array(N).fill(false);
+            const rowVisited = Array(N).fill(false);
+            const colVisited = Array(N).fill(false);
+            
+            const explore = (r: number) => {
+                rowVisited[r] = true;
+                for (let c = 0; c < N; c++) {
+                    if (mat[r][c] === 0 && !colVisited[c]) {
+                        colVisited[c] = true;
+                        if (matchC[c] !== -1 && !rowVisited[matchC[c]]) {
+                            explore(matchC[c]);
+                        }
+                    }
+                }
+            };
+            for (let i = 0; i < N; i++) {
+                if (matchR[i] === -1 && !rowVisited[i]) explore(i);
+            }
+            for (let i = 0; i < N; i++) {
+                if (!rowVisited[i]) rowCover[i] = true;
+                if (colVisited[i]) colCover[i] = true;
+            }
+            return { rowCover, colCover, matchCount };
+        };
+
+        let iteration = 1;
+        while (true) {
+            const { rowCover, colCover, matchCount } = getMinLines(matrix);
+            
+            steps.push(createStep(matrix, `Contamos cuántos ceros existen que no se choquen vertical ni horizontalmente. Hay ${matchCount} cero(s) independiente(s). Trazamos la mínima cantidad de líneas necesarias para cubrir todos los 0 de la matriz.`, { lines: { row: rowCover, col: colCover } }));
+            
+            if (matchCount === N) {
+                steps.push(createStep(matrix, `¡Éxito! El número de líneas/ceros independientes es igual al número de filas y columnas (${N}). Si no coincidía, se habría hallado y restado el mínimo no cubierto. El tablero ya es óptimo.`, { lines: { row: rowCover, col: colCover } }));
+                break;
+            }
+            
+            // Buscar mínimo no cubierto
+            let minUncovered = INF;
+            for (let i = 0; i < N; i++) {
+                if (!rowCover[i]) {
+                    for (let j = 0; j < N; j++) {
+                        if (!colCover[j] && matrix[i][j] < minUncovered) {
+                            minUncovered = matrix[i][j];
+                        }
+                    }
+                }
+            }
+            
+            const hlCells = [];
+            for (let i = 0; i < N; i++) {
+                if (!rowCover[i]) {
+                    for (let j = 0; j < N; j++) {
+                        if (!colCover[j] && matrix[i][j] === minUncovered) {
+                            hlCells.push({ r: i, c: j, color: '#f59e0b' });
+                        }
+                    }
+                }
+            }
+
+            steps.push(createStep(matrix, `Como el número de líneas (${matchCount}) no coincide con N (${N}), hallamos el mínimo valor de la matriz que no contenga líneas (mín = ${minUncovered}).`, { lines: { row: rowCover, col: colCover }, highlightCells: hlCells }));
+            
+            for (let i = 0; i < N; i++) {
+                for (let j = 0; j < N; j++) {
+                    if (!rowCover[i] && !colCover[j]) {
+                        if (matrix[i][j] !== INF) matrix[i][j] -= minUncovered;
+                    } else if (rowCover[i] && colCover[j]) {
+                        if (matrix[i][j] !== INF) matrix[i][j] += minUncovered;
+                    }
+                }
+            }
+            steps.push(createStep(matrix, `Restamos ${minUncovered} a las celdas sin líneas, y se lo sumamos a las intersecciones (matriz diagonal equivalente / doblemente cubiertos).`, { lines: { row: rowCover, col: colCover } }));
+            iteration++;
+            if (iteration > 20) break; // safeguard prevent infinite loops
         }
 
-        const finalMsg = goal === 'max' 
-            ? `¡Asignación óptima encontrada! Ganancia máxima total: ${totalCost}`
-            : `¡Asignación óptima encontrada! Costo mínimo total: ${totalCost}`;
+        // BT finding all solutions
+        const allAssignments: number[][] = [];
+        const bt = (r: number, current: number[]) => {
+            if (r === N) { allAssignments.push([...current]); return; }
+            for (let c = 0; c < N; c++) {
+                if (matrix[r][c] === 0 && !current.includes(c)) {
+                    current.push(c);
+                    bt(r + 1, current);
+                    current.pop();
+                }
+            }
+        };
+        bt(0, []);
 
-        steps.push(createStep(originalCost, finalMsg, { 
-            highlightCells: highlights, finalEdges, totalCost 
-        }));
+        const solutions: { edges: Set<string>, cost: number, highlights: any[] }[] = [];
+        for (const assignment of allAssignments) {
+            const finalEdges = new Set<string>();
+            let cost = 0;
+            const highlights = [];
+            for (let i = 0; i < N; i++) {
+                const j = assignment[i];
+                if (i < U && j < V && originalCost[i][j] !== INF) {
+                    const uNode = uNodes[i].id;
+                    const vNode = vNodes[j].id;
+                    const edge = edges.find(e => e.source === uNode && e.target === vNode);
+                    if (edge) {
+                        finalEdges.add(edge.id);
+                        cost += originalCost[i][j];
+                    }
+                    highlights.push({ r: i, c: j, color: '#16a34a' });
+                }
+            }
+            solutions.push({ edges: finalEdges, cost, highlights });
+        }
+
+        if (solutions.length === 0) {
+            steps.push(createStep(originalCost, "No se pudo encontrar una asignación válida (todos los caminos tienen costo infinito)."));
+        } else {
+            const finalMsg = goal === 'max' 
+                ? `¡Asignación óptima encontrada! Ganancia: ${solutions[0].cost}. Existen ${solutions.length} posibles solución(es).`
+                : `¡Asignación óptima encontrada! Costo mínimo: ${solutions[0].cost}. Existen ${solutions.length} posibles solución(es).`;
+
+            steps.push(createStep(originalCost, finalMsg, { 
+                highlightCells: solutions[0].highlights, 
+                finalEdges: solutions[0].edges, 
+                totalCost: solutions[0].cost,
+                allSolutions: solutions
+            }));
+        }
 
         setSimSteps(steps);
         setSimStepIdx(0);
@@ -532,6 +605,8 @@ const Assignment: React.FC = () => {
         setActiveNode(null);
         setActiveEdge(null);
         setAssignedEdges(new Set());
+        setAllSolutions([]);
+        setActiveSolutionIdx(0);
         setDisplayMatrix(null);
         setSimStepMsg('');
     };
@@ -1217,6 +1292,25 @@ const Assignment: React.FC = () => {
                     <div style={{ fontWeight: 700, color: '#16a34a', marginBottom: 8, fontSize: '1.2rem' }}>
                         ✅ {simStepMsg}
                     </div>
+                    {allSolutions.length > 1 && (
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 500, color: '#4a5568', fontSize: '0.9rem' }}>Ver solución:</span>
+                            {allSolutions.map((_, idx) => (
+                                <Button 
+                                    key={idx} 
+                                    size="small" 
+                                    type={activeSolutionIdx === idx ? 'primary' : 'default'}
+                                    onClick={() => {
+                                        setActiveSolutionIdx(idx);
+                                        setAssignedEdges(allSolutions[idx].edges);
+                                    }}
+                                    style={activeSolutionIdx === idx ? { background: '#16a34a', borderColor: '#16a34a' } : {}}
+                                >
+                                    #{idx + 1}
+                                </Button>
+                            ))}
+                        </div>
+                    )}
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                         {Array.from(assignedEdges).map(edgeId => {
                             const edge = edges.find(e => e.id === edgeId);
@@ -1492,7 +1586,13 @@ const Assignment: React.FC = () => {
                     // Applies final assignment explicitly
                     if (simSteps.length > 0) {
                         const finalStep = simSteps[simSteps.length - 1];
-                        if (finalStep.finalEdges) setAssignedEdges(finalStep.finalEdges);
+                        if (finalStep.allSolutions && finalStep.allSolutions.length > 0) {
+                            setAllSolutions(finalStep.allSolutions);
+                            setActiveSolutionIdx(0);
+                            setAssignedEdges(finalStep.allSolutions[0].edges);
+                        } else if (finalStep.finalEdges) {
+                            setAssignedEdges(finalStep.finalEdges);
+                        }
                         if (finalStep.msg) setSimStepMsg(finalStep.msg);
                     }
                 }}
@@ -1510,17 +1610,33 @@ const Assignment: React.FC = () => {
                             {simSteps[simStepIdx].msg}
                         </div>
                         
+                        {simSteps[simStepIdx].allSolutions && simSteps[simStepIdx].allSolutions.length > 1 && (
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+                                {simSteps[simStepIdx].allSolutions.map((_: any, idx: number) => (
+                                    <Button 
+                                        key={idx} 
+                                        type={activeSolutionIdx === idx ? 'primary' : 'default'}
+                                        onClick={() => setActiveSolutionIdx(idx)}
+                                        size="small"
+                                        style={activeSolutionIdx === idx ? { background: '#2e186a' } : {}}
+                                    >
+                                        Solución #{idx + 1}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
                         <CostMatrix 
-                            uNodes={uNodes}
-                            vNodes={vNodes}
+                            uNodes={simSteps[simStepIdx].simUNodes || uNodes}
+                            vNodes={simSteps[simStepIdx].simVNodes || vNodes}
                             edges={[]}
                             overrideMatrix={simSteps[simStepIdx].matrix}
                             rowMins={simSteps[simStepIdx].rowMins}
                             colMins={simSteps[simStepIdx].colMins}
                             lines={simSteps[simStepIdx].lines}
-                            highlightCells={simSteps[simStepIdx].highlightCells}
+                            highlightCells={simSteps[simStepIdx].allSolutions 
+                                ? simSteps[simStepIdx].allSolutions[Math.min(activeSolutionIdx || 0, simSteps[simStepIdx].allSolutions.length - 1)].highlights 
+                                : simSteps[simStepIdx].highlightCells}
                         />
-
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
                             <Button 
                                 type="primary" 

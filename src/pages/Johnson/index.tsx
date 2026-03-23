@@ -354,14 +354,6 @@ const Johnson: React.FC = () => {
         if (nodes.length < 2) return "El grafo debe tener al menos 2 nodos.";
         const order = topologicalSort(nodes, edges);
         if (!order) return "El grafo contiene ciclos. El CPM requiere un DAG (grafo acíclico dirigido).";
-        const inDeg: Record<string, number> = {};
-        const outDeg: Record<string, number> = {};
-        nodes.forEach(n => { inDeg[n.id] = 0; outDeg[n.id] = 0; });
-        edges.forEach(e => { inDeg[e.target]++; outDeg[e.source]++; });
-        const sources = nodes.filter(n => inDeg[n.id] === 0);
-        const sinks = nodes.filter(n => outDeg[n.id] === 0);
-        if (sources.length !== 1) return `El grafo debe tener exactamente UN nodo fuente (sin aristas entrantes). Encontrados: ${sources.length}.`;
-        if (sinks.length !== 1) return `El grafo debe tener exactamente UN nodo sumidero (sin aristas salientes). Encontrados: ${sinks.length}.`;
         return null;
     }, [nodes, edges]);
 
@@ -376,7 +368,54 @@ const Johnson: React.FC = () => {
         simAbort.current = false;
         setSimState('running');
 
-        const order = topologicalSort(nodes, edges)!;
+        let currentNodes = [...nodes];
+        let currentEdges = [...edges];
+        
+        const inDeg: Record<string, number> = {};
+        const outDeg: Record<string, number> = {};
+        currentNodes.forEach(n => { inDeg[n.id] = 0; outDeg[n.id] = 0; });
+        currentEdges.forEach(e => { inDeg[e.target]++; outDeg[e.source]++; });
+        
+        const sources = currentNodes.filter(n => inDeg[n.id] === 0);
+        const sinks = currentNodes.filter(n => outDeg[n.id] === 0);
+        
+        let graphChanged = false;
+
+        if (sources.length > 1) {
+            const startId = `start-${Date.now()}`;
+            const minX = Math.min(...sources.map(s => s.x));
+            const avgY = sources.reduce((sum, s) => sum + s.y, 0) / sources.length;
+            const startNode: GraphNode = { id: startId, x: minX - 120, y: avgY, label: 'Inicio', color: '#94a3b8' };
+            currentNodes = [...currentNodes, startNode];
+            const newEdges = sources.map(s => ({
+                id: `edge-${startId}-${s.id}`, source: startId, target: s.id,
+                weight: '0', isDirected: true, cpOffset: { dx: 0, dy: 0 }
+            }));
+            currentEdges = [...currentEdges, ...newEdges];
+            graphChanged = true;
+        }
+
+        if (sinks.length > 1) {
+            const endId = `end-${Date.now()}`;
+            const maxX = Math.max(...sinks.map(s => s.x));
+            const avgY = sinks.reduce((sum, s) => sum + s.y, 0) / sinks.length;
+            const endNode: GraphNode = { id: endId, x: maxX + 120, y: avgY, label: 'Fin', color: '#94a3b8' };
+            currentNodes = [...currentNodes, endNode];
+            const newEdges = sinks.map(s => ({
+                id: `edge-${s.id}-${endId}`, source: s.id, target: endId,
+                weight: '0', isDirected: true, cpOffset: { dx: 0, dy: 0 }
+            }));
+            currentEdges = [...currentEdges, ...newEdges];
+            graphChanged = true;
+        }
+
+        if (graphChanged) {
+            setNodes(currentNodes);
+            setEdges(currentEdges);
+            message.info("Se han añadido nodos ficticios (Inicio/Fin) automáticamente para unificar la red.");
+        }
+
+        const order = topologicalSort(currentNodes, currentEdges)!;
         const et: Record<string, number> = {};
         const lt: Record<string, number> = {};
         const newSlacks: Record<string, number> = {};
@@ -392,8 +431,8 @@ const Johnson: React.FC = () => {
         // Build adjacency
         const incoming: Record<string, GraphEdge[]> = {};
         const outgoing: Record<string, GraphEdge[]> = {};
-        nodes.forEach(n => { incoming[n.id] = []; outgoing[n.id] = []; });
-        edges.forEach(e => { incoming[e.target].push(e); outgoing[e.source].push(e); });
+        currentNodes.forEach(n => { incoming[n.id] = []; outgoing[n.id] = []; });
+        currentEdges.forEach(e => { incoming[e.target].push(e); outgoing[e.source].push(e); });
 
         // ── Forward pass ──────────────────────────────────────────────
         for (const nodeId of order) {
@@ -450,7 +489,7 @@ const Johnson: React.FC = () => {
         // ── Calculate slacks & critical path ─────────────────────────
         const critEdges = new Set<string>();
         const critNodeSet = new Set<string>();
-        edges.forEach(edge => {
+        currentEdges.forEach(edge => {
             const w = parseFloat(edge.weight || '1');
             const slack = goal === 'max'
                 ? (lt[edge.target] ?? 0) - (et[edge.source] ?? 0) - w
