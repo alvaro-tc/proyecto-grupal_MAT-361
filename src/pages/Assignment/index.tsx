@@ -335,7 +335,7 @@ const Assignment: React.FC = () => {
 
         simAbort.current = false;
         setAssignedEdges(new Set());
-        setSimStepMsg('Preparando matriz de costos...');
+        setSimStepMsg('Preparando matriz de adyacencia...');
 
         const U = uNodes.length;
         const V = vNodes.length;
@@ -403,7 +403,7 @@ const Assignment: React.FC = () => {
             if (!isUnbalanced) steps.push(createStep(originalCost, "Paso Inicial: Matriz de Beneficios (Maximización)", { isInitial: true }));
             steps.push(createStep(matrix, `Transformación para Maximizar: Restamos los valores al beneficio máximo (${maxW}) para convertirlo en problema de minimización.`));
         } else {
-            if (!isUnbalanced) steps.push(createStep(matrix, "Paso Inicial: Matriz de Costos", { isInitial: true }));
+            steps.push(createStep(matrix, "Paso Inicial: Matriz de Adyacencia", { isInitial: true }));
         }
 
         // Step 1: Row Reduction
@@ -1114,7 +1114,7 @@ const Assignment: React.FC = () => {
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
                                 <li><b>Crear Nodo:</b> Clic en el lienzo. Representan agentes o tareas.</li>
                                 <li><b>Conectar Nodos:</b> Clic de un nodo a otro para definir el costo de asignación.</li>
-                                <li><b>Matriz:</b> Edita los costos directamente. Para el método húngaro, la matriz actúa como tabla de costos.</li>
+                                <li><b>Matriz:</b> Edita los pesos directamente. Para el método húngaro, la matriz actúa como tabla de adyacencia.</li>
                                 <li><b>Importante:</b> Todas las conexiones deben tener costo $\ge 0$.</li>
                             </ul>
                             <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Modo Edición</p>

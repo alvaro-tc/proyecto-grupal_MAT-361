@@ -10,8 +10,8 @@ export const ContentSection = styled("section")`
   }
 `;
 
-export const Content = styled("p")`
-  margin: 1.5rem 0 2rem 0;
+export const Content = styled.p`
+  white-space: pre-line;
 `;
 
 export const StyledRow = styled(Row)`
