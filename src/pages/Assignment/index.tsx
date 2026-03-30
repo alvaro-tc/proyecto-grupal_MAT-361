@@ -335,7 +335,7 @@ const Assignment: React.FC = () => {
 
         simAbort.current = false;
         setAssignedEdges(new Set());
-        setSimStepMsg('Preparando matriz de costos...');
+        setSimStepMsg('Preparando matriz de adyacencia...');
 
         const U = uNodes.length;
         const V = vNodes.length;
@@ -403,7 +403,7 @@ const Assignment: React.FC = () => {
             if (!isUnbalanced) steps.push(createStep(originalCost, "Paso Inicial: Matriz de Beneficios (Maximización)", { isInitial: true }));
             steps.push(createStep(matrix, `Transformación para Maximizar: Restamos los valores al beneficio máximo (${maxW}) para convertirlo en problema de minimización.`));
         } else {
-            if (!isUnbalanced) steps.push(createStep(matrix, "Paso Inicial: Matriz de Costos", { isInitial: true }));
+            if (!isUnbalanced) steps.push(createStep(matrix, "Paso Inicial: matriz de adyacencia", { isInitial: true }));
         }
 
         // Step 1: Row Reduction
@@ -985,24 +985,22 @@ const Assignment: React.FC = () => {
         <Wrap>
             {/* ── Simulation Controls Bar ───────────────────────────────── */}
             <SimBar>
-                <div style={{ fontWeight: 700, color: '#2e186a', fontSize: '1rem', marginRight: 4 }}>
-                    Método Húngaro (Asignación)
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 800, color: '#2e186a', fontSize: '1.2rem' }}>
+                        Algoritmo de Asignación
+                    </div>
+                    {/* Graph validity indicator */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        background: graphValid ? '#f0fdf4' : '#fff7ed',
+                        border: `1px solid ${graphValid ? '#86efac' : '#fed7aa'}`,
+                        borderRadius: 20, padding: '3px 10px', fontSize: '0.78rem',
+                        color: graphValid ? '#16a34a' : '#ea580c', fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {graphValid ? '✅ Grafo válido' : '⚠ Grafo inválido'}
+                    </div>
                 </div>
-                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
-
-                {/* Graph validity indicator */}
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    background: graphValid ? '#f0fdf4' : '#fff7ed',
-                    border: `1px solid ${graphValid ? '#86efac' : '#fed7aa'}`,
-                    borderRadius: 20, padding: '3px 10px', fontSize: '0.78rem',
-                    color: graphValid ? '#16a34a' : '#ea580c', fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                }}>
-                    {graphValid ? '✅ Grafo válido' : '⚠ Grafo inválido'}
-                </div>
-
-                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
 
                 {/* Green start button — always visible */}
                 <Button
@@ -1026,18 +1024,16 @@ const Assignment: React.FC = () => {
                     onClick={stopSimulation}
                     disabled={simState !== 'running'}
                     style={{ borderRadius: 20 }}
-                >
-                    Detener
-                </Button>
+                    title="Detener"
+                />
 
                 {/* Reset — always visible */}
                 <Button
                     icon={<ReloadOutlined />}
                     onClick={resetSimulation}
                     style={{ borderRadius: 20, borderColor: '#8b5cf6', color: '#8b5cf6' }}
-                >
-                    Reiniciar
-                </Button>
+                    title="Reiniciar"
+                />
 
                 {/* Matrix toggle */}
                 <Button
@@ -1084,7 +1080,14 @@ const Assignment: React.FC = () => {
                 <Button size="small" icon={<DownloadOutlined />} onClick={handleExportJSON}
                     style={{ borderRadius: 12, color: '#096dd9', borderColor: '#91d5ff', background: '#e6f7ff', fontWeight: 600 }}>Exportar</Button>
                 <Button size="small" icon={<UploadOutlined />} onClick={() => importRef.current?.click()}
-                    style={{ borderRadius: 12, color: '#389e0d', borderColor: '#b7eb8f', background: '#f6ffed', fontWeight: 600 }}>Importar</Button>
+                    style={{ borderRadius: 12, color: '#389e0d', borderColor: '#b7eb8f', background: '#f6ffed', fontWeight: 600 }} title="Importar">Importar</Button>
+                <input
+                    ref={importRef}
+                    type="file"
+                    accept=".json"
+                    style={{ display: 'none' }}
+                    onChange={handleImportJSON}
+                />
                 <Button size="small" icon={<DeleteOutlined />} onClick={handleClearAll}
                     style={{ borderRadius: 12, color: '#cf1322', borderColor: '#ffa39e', background: '#fff1f0', fontWeight: 600 }}>Borrar Todo</Button>
 
@@ -1114,7 +1117,7 @@ const Assignment: React.FC = () => {
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
                                 <li><b>Crear Nodo:</b> Clic en el lienzo. Representan agentes o tareas.</li>
                                 <li><b>Conectar Nodos:</b> Clic de un nodo a otro para definir el costo de asignación.</li>
-                                <li><b>Matriz:</b> Edita los costos directamente. Para el método húngaro, la matriz actúa como tabla de costos.</li>
+                                <li><b>Matriz:</b> Edita los costos directamente. Para el Algoritmo de Asignación, la matriz actúa como matriz de adyacencia.</li>
                                 <li><b>Importante:</b> Todas las conexiones deben tener costo $\ge 0$.</li>
                             </ul>
                             <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Modo Edición</p>
@@ -1123,7 +1126,7 @@ const Assignment: React.FC = () => {
                                 <li><b>Ajustar Curvatura:</b> Arrastra el costo de una arista.</li>
                                 <li><b>Editar / Eliminar:</b> Mantén presionado un nodo o arista.</li>
                             </ul>
-                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación Húngara</p>
+                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación de Asignación</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
                                 <li>Encuentra la asignación de costo mínimo ($N \to N$).</li>
                                 <li>Se balanceará la matriz automáticamente rellenando ceros si faltan aristas.</li>
@@ -1428,13 +1431,6 @@ const Assignment: React.FC = () => {
                                 <Button block icon={<UploadOutlined />} onClick={() => importRef.current?.click()}>
                                     Importar JSON
                                 </Button>
-                                <input
-                                    ref={importRef}
-                                    type="file"
-                                    accept=".json"
-                                    style={{ display: 'none' }}
-                                    onChange={handleImportJSON}
-                                />
                             </div>
                         </>
                     )}
@@ -1577,7 +1573,7 @@ const Assignment: React.FC = () => {
 
             {/* ── Simulation Modal ────────────────────────────────────────── */}
             <Modal
-                title={<ModalTitle title="Simulación: Método Húngaro" />}
+                title={<ModalTitle title="Simulación: Algoritmo de Asignación" />}
                 open={simModalOpen}
                 onCancel={() => {
                     setSimModalOpen(false);

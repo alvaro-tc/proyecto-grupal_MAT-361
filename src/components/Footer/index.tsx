@@ -19,13 +19,17 @@ interface SocialLinkProps {
 
 const Footer = ({ t }: { t: TFunction }) => {
   const SocialLink = ({ href, src }: SocialLinkProps) => {
+    // eslint-disable-next-line jsx-a11y/anchor-is-valid
     return (
       <a
         href={href}
-        target="_blank"
+        target={href === "#" ? "_self" : "_blank"}
         rel="noopener noreferrer"
         key={src}
         aria-label={src}
+        onClick={(e) => {
+          if (href === "#") e.preventDefault();
+        }}
       >
         <SvgIcon src={src} width="25px" height="25px" />
       </a>
@@ -50,24 +54,25 @@ const Footer = ({ t }: { t: TFunction }) => {
             </NavLink>
             <FooterContainer>
               <SocialLink
-                href="https://github.com/Adrinlol/create-react-app-adrinlol"
+                href="https://github.com/alvaro-tc/pagina-algoritmos"
                 src="github.svg"
               />
               <SocialLink
-                href="https://twitter.com/Adrinlolx"
+                href="#"
                 src="twitter.svg"
               />
               <SocialLink
-                href="https://www.linkedin.com/in/lasha-kakabadze/"
+                href="#"
                 src="linkedin.svg"
               />
               <SocialLink
-                href="https://medium.com/@lashakakabadze/"
+                href="#"
                 src="medium.svg"
               />
+              {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
               <a
-                href="https://ko-fi.com/Y8Y7H8BNJ"
-                target="_blank"
+                href="#"
+                onClick={(e) => e.preventDefault()}
                 rel="noopener noreferrer"
               >
                 <img

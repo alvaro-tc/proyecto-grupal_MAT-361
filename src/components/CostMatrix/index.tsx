@@ -101,7 +101,7 @@ const CostMatrix = ({
   if (uNodes.length === 0 && vNodes.length === 0) {
       return (
           <Wrap>
-              <Title>Matriz de Costos</Title>
+              <Title>Matriz de Adyacencia</Title>
               <p style={{ textAlign: 'center', color: '#b0b8c9', fontSize: '0.82rem' }}>
                   Agrega orígenes y destinos para ver la matriz
               </p>
@@ -135,7 +135,7 @@ const CostMatrix = ({
 
   return (
       <Wrap>
-          <Title>Matriz de Costos</Title>
+          <Title>Matriz de Adyacencia</Title>
           <div style={{ paddingBottom: 10, overflowX: 'auto' }}>
             <Table>
                 <thead>

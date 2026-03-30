@@ -730,7 +730,7 @@ const Johnson: React.FC = () => {
         if (!selectedNode) { setSelectedNode(nodeId); message.info("Haz clic en otro nodo para conectar"); return; }
         // Block self-loops — CPM/Johnson requires a DAG
         if (selectedNode === nodeId) {
-            message.error("No se permiten bucles (self-loops). El CPM/Johnson requiere un grafo acíclico (DAG).");
+            message.error("No se permiten bucles (self-loops). El Algoritmo de Johnson requiere un grafo acíclico (DAG).");
             setSelectedNode(null);
             return;
         }
@@ -740,7 +740,7 @@ const Johnson: React.FC = () => {
         const hypotheticalEdge = { id: '__test__', source: selectedNode, target: nodeId, weight: '1', isDirected: true, cpOffset: { dx: 0, dy: 0 } };
         const testOrder = topologicalSort(nodes, [...edges, hypotheticalEdge]);
         if (!testOrder) {
-            message.error("Esta arista crearía un ciclo. El CPM/Johnson requiere un grafo acíclico dirigido (DAG).");
+            message.error("Esta arista crearía un ciclo. El Algoritmo de Johnson requiere un grafo acíclico dirigido (DAG).");
             setSelectedNode(null);
             return;
         }
@@ -845,7 +845,7 @@ const Johnson: React.FC = () => {
     const handleMatrixEdgeChange = (sourceId: string, targetId: string, value: string) => {
         // Block self-loops
         if (sourceId === targetId) {
-            message.error("No se permiten bucles (self-loops). El CPM/Johnson requiere un grafo acíclico (DAG).");
+            message.error("No se permiten bucles (self-loops). El Algoritmo de Johnson requiere un grafo acíclico (DAG).");
             return;
         }
         setEdges(prev => {
@@ -853,7 +853,7 @@ const Johnson: React.FC = () => {
             if (value === "") { return idx !== -1 ? prev.filter((_, i) => i !== idx) : prev; }
             let num = parseFloat(value); if (isNaN(num)) num = 0;
             if (num < 0) {
-                message.error("El CPM/Johnson no permite aristas con peso negativo. Ingresa un valor ≥ 0.");
+                message.error("El Algoritmo de Johnson no permite aristas con peso negativo. Ingresa un valor ≥ 0.");
                 return prev;
             }
             if (idx !== -1) { const ne = [...prev]; ne[idx] = { ...ne[idx], weight: num.toString() }; return ne; }
@@ -861,7 +861,7 @@ const Johnson: React.FC = () => {
             const hypotheticalEdge = { id: `edge-${Date.now()}-${Math.random()}`, source: sourceId, target: targetId, weight: num.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 } };
             const testOrder = topologicalSort(nodes, [...prev, hypotheticalEdge]);
             if (!testOrder) {
-                message.error("Esta arista crearía un ciclo. El CPM/Johnson requiere un grafo acíclico dirigido (DAG).");
+                message.error("Esta arista crearía un ciclo. El Algoritmo de Johnson requiere un grafo acíclico dirigido (DAG).");
                 return prev;
             }
             return [...prev, hypotheticalEdge];
@@ -916,24 +916,22 @@ const Johnson: React.FC = () => {
         <Wrap>
             {/* ── Simulation Controls Bar ───────────────────────────────── */}
             <SimBar>
-                <div style={{ fontWeight: 700, color: '#2e186a', fontSize: '1rem', marginRight: 4 }}>
-                    CPM — Johnson
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 800, color: '#2e186a', fontSize: '1.2rem' }}>
+                        Algoritmo de Johnson
+                    </div>
+                    {/* Graph validity indicator */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        background: graphValid ? '#f0fdf4' : '#fff7ed',
+                        border: `1px solid ${graphValid ? '#86efac' : '#fed7aa'}`,
+                        borderRadius: 20, padding: '3px 10px', fontSize: '0.78rem',
+                        color: graphValid ? '#16a34a' : '#ea580c', fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {graphValid ? '✅ Grafo válido' : '⚠ Grafo inválido'}
+                    </div>
                 </div>
-                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
-
-                {/* Graph validity indicator */}
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    background: graphValid ? '#f0fdf4' : '#fff7ed',
-                    border: `1px solid ${graphValid ? '#86efac' : '#fed7aa'}`,
-                    borderRadius: 20, padding: '3px 10px', fontSize: '0.78rem',
-                    color: graphValid ? '#16a34a' : '#ea580c', fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                }}>
-                    {graphValid ? '✅ Grafo válido' : '⚠ Grafo inválido'}
-                </div>
-
-                <div style={{ width: 1, height: 24, background: '#e5e7eb' }} />
 
                 {/* Green start button — always visible */}
                 <Button
@@ -957,18 +955,16 @@ const Johnson: React.FC = () => {
                     onClick={stopSimulation}
                     disabled={simState !== 'running'}
                     style={{ borderRadius: 20 }}
-                >
-                    Detener
-                </Button>
+                    title="Detener"
+                />
 
                 {/* Reset — always visible */}
                 <Button
                     icon={<ReloadOutlined />}
                     onClick={resetSimulation}
                     style={{ borderRadius: 20, borderColor: '#8b5cf6', color: '#8b5cf6' }}
-                >
-                    Reiniciar
-                </Button>
+                    title="Reiniciar"
+                />
 
                 {/* Matrix toggle */}
                 <Button
@@ -1015,7 +1011,15 @@ const Johnson: React.FC = () => {
                 <Button size="small" icon={<DownloadOutlined />} onClick={handleExportJSON}
                     style={{ borderRadius: 12, color: '#096dd9', borderColor: '#91d5ff', background: '#e6f7ff', fontWeight: 600 }}>Exportar</Button>
                 <Button size="small" icon={<UploadOutlined />} onClick={() => importRef.current?.click()}
-                    style={{ borderRadius: 12, color: '#389e0d', borderColor: '#b7eb8f', background: '#f6ffed', fontWeight: 600 }}>Importar</Button>
+                    style={{ borderRadius: 12, color: '#389e0d', borderColor: '#b7eb8f', background: '#f6ffed', fontWeight: 600 }}
+                    title="Importar">Importar</Button>
+                <input
+                    ref={importRef}
+                    type="file"
+                    accept=".json"
+                    style={{ display: 'none' }}
+                    onChange={handleImportJSON}
+                />
                 <Button size="small" icon={<DeleteOutlined />} onClick={handleClearAll}
                     style={{ borderRadius: 12, color: '#cf1322', borderColor: '#ffa39e', background: '#fff1f0', fontWeight: 600 }}>Borrar Todo</Button>
 
@@ -1054,7 +1058,7 @@ const Johnson: React.FC = () => {
                                 <li><b>Ajustar Curvatura:</b> Arrastra el peso de una arista.</li>
                                 <li><b>Editar / Eliminar:</b> Mantén presionado un nodo o arista.</li>
                             </ul>
-                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación CPM</p>
+                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación de Johnson</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
                                 <li>El grafo debe ser un <b>DAG</b> con <b>un fuente</b> y <b>un sumidero</b>.</li>
                                 <li>El indicador <b>✅/⚠</b> en la barra muestra si el grafo es válido.</li>
@@ -1362,13 +1366,6 @@ const Johnson: React.FC = () => {
                                 <Button block icon={<UploadOutlined />} onClick={() => importRef.current?.click()}>
                                     Importar JSON
                                 </Button>
-                                <input
-                                    ref={importRef}
-                                    type="file"
-                                    accept=".json"
-                                    style={{ display: 'none' }}
-                                    onChange={handleImportJSON}
-                                />
                             </div>
                         </>
                     )}
@@ -1493,7 +1490,7 @@ const Johnson: React.FC = () => {
                             onClick={() => setOptimizationGoal('max')}
                         >
                             <input type="radio" checked={optimizationGoal === 'max'} readOnly style={{ marginRight: 10 }} />
-                            <strong>Maximizar (CPM Clásico)</strong> <span style={{ color: '#718096' }}>(ej. Ruta Crítica, Proyecto más largo)</span>
+                            <strong>Maximizar (Johnson)</strong> <span style={{ color: '#718096' }}>(ej. Ruta Crítica, Proyecto más largo)</span>
                         </div>
                         <div
                             style={{

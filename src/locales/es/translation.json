@@ -49,7 +49,7 @@
   "Nombre del Nodo": "Nombre del Nodo",
   "Color": "Color",
   "Intro.Title": "Análisis de Algoritmos (MAT-136)",
-  "Intro.Text": "Pagina personal acerca de la materia de analisis de algoritmos de la materia de MAT-136 de la Universidad Católica Boliviana.",
+  "Intro.Text": "Página de proyecto grupal acerca de la materia de análisis de algoritmos (MAT-136) de la Universidad Católica Boliviana.",
   "Intro.Button.Explore": "Explorar Videos",
   "Intro.Button.LearnMore": "Editor de Grafos",
   "MiddleBlock.Title": "Aprende Visualmente",
@@ -62,7 +62,7 @@
   "About.Section2.Title": "Videos Educativos",
   "About.Section2.Content": "Accede a una colección curada de videos que explican paso a paso los algoritmos clave.",
   "Contact.Title": "Contacto",
-  "Contact.Text": "Álvaro Ariel Torrez Calle — Universidad Católica Boliviana — alvarotorrezc@gmail.com",
+  "Contact.Text": "Los siguientes estudiantes son parte del proyecto grupal:\n- Alvaro Torrez Calle\n- Andre Fernando Suxo Condori\n- Alex Leonel Quino Miranda\n- Jhamile Llapacu Cruz\n- Noel Condori Quispe\n- Dayana Gretel Rojas Valencia",
   "Product.Title": "Recursos",
   "Product.Text": "Accede a videos, grafos interactivos, documentación y material de apoyo diseñado para estudiantes."
 }
