@@ -336,6 +336,7 @@ const Assignment: React.FC = () => {
         simAbort.current = false;
         setAssignedEdges(new Set());
         setSimStepMsg('Preparando matriz de adyacencia...');
+        setSimStepMsg('Preparando matriz de adyacencia...');
 
         const U = uNodes.length;
         const V = vNodes.length;
