@@ -1225,6 +1225,7 @@ const Assignment: React.FC = () => {
                                     onPointerDown={e => handleEdgeLabelPointerDown(e, edge.id)}
                                     onPointerMove={e => handleEdgeLabelPointerMove(e, edge.id)}
                                     onPointerUp={handleEdgeLabelPointerUp}
+                                    translate="no"
                                     style={{
                                         cursor: mode === 'editing' ? (draggingEdge === edge.id ? 'grabbing' : 'grab') : 'default',
                                         borderColor: isAssigned ? '#16a34a' : '#c4b5fd',
@@ -1250,6 +1251,7 @@ const Assignment: React.FC = () => {
                                     onPointerLeave={handleNodePointerUp}
                                     onClick={e => handleNodeClick(e, node.id)}
                                     onContextMenu={e => handleNodeContextMenu(e, node.id)}
+                                    translate="no"
                                 >
                                     {node.label}
                                 </NodeCircle>

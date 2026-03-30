@@ -137,12 +137,12 @@ const CostMatrix = ({
       <Wrap>
           <Title>Matriz de Adyacencia</Title>
           <div style={{ paddingBottom: 10, overflowX: 'auto' }}>
-            <Table>
+            <Table translate="no">
                 <thead>
                     <tr>
                         <EmptyCorner />
                         {vNodes.map((nd, c) => (
-                            <HeaderCell key={`col-${nd.id}`} bg={nd.color} style={{ opacity: lines.col[c] ? 0.4 : 1 }}>
+                            <HeaderCell key={`col-${nd.id}`} bg={nd.color} style={{ opacity: lines.col[c] ? 0.4 : 1 }} translate="no">
                                 {nd.label}
                             </HeaderCell>
                         ))}
@@ -151,7 +151,7 @@ const CostMatrix = ({
                 <tbody>
                     {uNodes.map((rowNode, r) => (
                         <tr key={`row-${rowNode.id}`}>
-                            <HeaderCell bg={rowNode.color} style={{ opacity: lines.row[r] ? 0.4 : 1 }}>
+                            <HeaderCell bg={rowNode.color} style={{ opacity: lines.row[r] ? 0.4 : 1 }} translate="no">
                                 {rowNode.label}
                             </HeaderCell>
                             
@@ -172,6 +172,7 @@ const CostMatrix = ({
                                         highlightColor={hColor}
                                         isRowMin={isRowMin}
                                         isColMin={isColMin}
+                                        translate="no"
                                         style={{ 
                                             opacity: isCrossedOut && !isDoubleCrossed ? 0.5 : 1,
                                             background: isDoubleCrossed ? '#f87171' : undefined

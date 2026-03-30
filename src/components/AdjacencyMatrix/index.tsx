@@ -186,12 +186,12 @@ const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange, overrid
     return (
         <Wrap>
             <Title>Matriz de Adyacencia</Title>
-            <Table>
+            <Table translate="no">
                 <thead>
                     <tr>
                         <EmptyCorner />
                         {nodes.map(nd => (
-                            <HeaderCell key={nd.id} bg={nd.color}>{nd.label}</HeaderCell>
+                            <HeaderCell key={nd.id} bg={nd.color} translate="no">{nd.label}</HeaderCell>
                         ))}
                         <HeaderCell bg="#7c3aed" title="Suma de fila">Σ</HeaderCell>
                         <HeaderCell bg="#d97706" title="Elementos ≠ 0 en fila">n</HeaderCell>
@@ -200,14 +200,14 @@ const AdjacencyMatrix = ({ nodes, edges, editable = false, onEdgeChange, overrid
                 <tbody>
                     {nodes.map((rowNode, r) => (
                         <tr key={rowNode.id}>
-                            <HeaderCell bg={rowNode.color}>{rowNode.label}</HeaderCell>
+                            <HeaderCell bg={rowNode.color} translate="no">{rowNode.label}</HeaderCell>
                             {matrix[r].map((val, c) => {
                                 const targetNode = nodes[c];
                                 const currentValStr = val !== null ? val.toString() : '';
                                 const displayVal = val !== null ? val : '-';
 
                                 return (
-                                    <DataCell key={c} isNull={val === null}>
+                                    <DataCell key={c} isNull={val === null} translate="no">
                                         {editable ? (
                                             <InputCell
                                                 defaultValue={currentValStr}

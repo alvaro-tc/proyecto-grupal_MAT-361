@@ -1142,6 +1142,7 @@ const Johnson: React.FC = () => {
                                     onPointerDown={e => handleEdgeLabelPointerDown(e, edge.id)}
                                     onPointerMove={e => handleEdgeLabelPointerMove(e, edge.id)}
                                     onPointerUp={handleEdgeLabelPointerUp}
+                                    translate="no"
                                     style={{
                                         cursor: mode === 'editing' ? (draggingEdge === edge.id ? 'grabbing' : 'grab') : 'default',
                                         borderColor: isCrit ? '#ef4444' : '#c4b5fd',
@@ -1174,13 +1175,14 @@ const Johnson: React.FC = () => {
                                         onPointerLeave={handleNodePointerUp}
                                         onClick={e => handleNodeClick(e, node.id)}
                                         onContextMenu={e => handleNodeContextMenu(e, node.id)}
+                                        translate="no"
                                     >
-                                        <CpmLabel color={node.color}>{node.label}</CpmLabel>
+                                        <CpmLabel color={node.color} translate="no">{node.label}</CpmLabel>
                                         <CpmBottom>
-                                            <CpmCell etCell hasValue={et !== null && et !== undefined}>
+                                            <CpmCell etCell hasValue={et !== null && et !== undefined} translate="no">
                                                 {et !== null && et !== undefined ? et : '-'}
                                             </CpmCell>
-                                            <CpmCell hasValue={lt !== null && lt !== undefined}>
+                                            <CpmCell hasValue={lt !== null && lt !== undefined} translate="no">
                                                 {lt !== null && lt !== undefined ? lt : '-'}
                                             </CpmCell>
                                         </CpmBottom>
@@ -1198,6 +1200,7 @@ const Johnson: React.FC = () => {
                                     onPointerLeave={handleNodePointerUp}
                                     onClick={e => handleNodeClick(e, node.id)}
                                     onContextMenu={e => handleNodeContextMenu(e, node.id)}
+                                    translate="no"
                                 >
                                     {node.label}
                                 </NodeCircle>
@@ -1250,13 +1253,13 @@ const Johnson: React.FC = () => {
                                     const node = nodes.find(n => n.id === nodeId);
                                     return (
                                         <React.Fragment key={`${pIdx}-${nodeId}`}>
-                                            <span style={{
+                                            <span translate="no" style={{
                                                 background: node?.color, color: 'white', borderRadius: 8,
                                                 padding: '4px 12px', fontWeight: 700, fontSize: '0.9rem',
                                                 border: '2px solid #ef4444'
                                             }}>
                                                 {node?.label ?? nodeId}
-                                                <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                                                <span translate="no" style={{ fontSize: '0.7rem', opacity: 0.9 }}>
                                                     {' '}(ET:{earlyTimes[nodeId] ?? '-'} / LT:{lateTimes[nodeId] ?? '-'})
                                                 </span>
                                             </span>
