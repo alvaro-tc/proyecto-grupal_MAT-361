@@ -15,6 +15,11 @@ const routes = [
     component: "GraphEditorMatrix",
   },
   {
+    path: "/algorithms/northwest",
+    exact: true,
+    component: "Northwest",
+  },
+  {
     path: "/algorithms/johnson",
     exact: true,
     component: "Johnson",
