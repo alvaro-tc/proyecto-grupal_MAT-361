@@ -421,12 +421,30 @@ const NorthwestPage: React.FC = () => {
             return;
         }
         
-        if (!isBalanced) {
-            Modal.warning({
-                title: "Problema no balanceado",
-                content: "La oferta total no es igual a la demanda total. Se usará el método de la esquina noroeste, pero la solución puede no ser óptima.",
-                centered: true,
-            });
+        let currentCostos = matrizCostos;
+        let currentOferta = oferta;
+        let currentDemanda = demanda;
+        
+        const currentSumaOferta = currentOferta.reduce<number>((acc, val) => acc + (val || 0), 0);
+        const currentSumaDemanda = currentDemanda.reduce<number>((acc, val) => acc + (val || 0), 0);
+
+        if (Math.abs(currentSumaOferta - currentSumaDemanda) > 1e-6) {
+            message.info("Balanceando matriz automáticamente...");
+            currentCostos = currentCostos.map(fila => [...fila]);
+            currentOferta = [...currentOferta];
+            currentDemanda = [...currentDemanda];
+            
+            if (currentSumaOferta > currentSumaDemanda) {
+                currentCostos.forEach(fila => fila.push(0));
+                currentDemanda.push(currentSumaOferta - currentSumaDemanda);
+            } else {
+                currentCostos.push(Array(currentCostos[0].length).fill(0));
+                currentOferta.push(currentSumaDemanda - currentSumaOferta);
+            }
+            
+            setMatrizCostos(currentCostos);
+            setOferta(currentOferta);
+            setDemanda(currentDemanda);
         }
         
         simAbort.current = false;
@@ -434,7 +452,7 @@ const NorthwestPage: React.FC = () => {
         setResultadoFinal(null);
         setCostoTotalFinal(null);
         
-        const datosConvertidos = convertirANumeros(matrizCostos, oferta, demanda);
+        const datosConvertidos = convertirANumeros(currentCostos, currentOferta, currentDemanda);
         const todasIteraciones = calcularIteraciones(
             datosConvertidos.costos, 
             datosConvertidos.oferta, 
@@ -798,7 +816,9 @@ const NorthwestPage: React.FC = () => {
 
                 <CenterPanel>
                     <TableContainer>
-                        <h3 style={{ color: '#2e186a', margin: '0 0 1rem 0' }}>📋 Matriz de Costos</h3>
+                        <h3 style={{ color: '#2e186a', margin: '0 0 1rem 0' }}>
+                            📋 Matriz de {optimizationGoal === 'max' ? 'Beneficios' : 'Costos'}
+                        </h3>
                         
                         <MatrixTable>
                             <thead>
@@ -930,8 +950,8 @@ const NorthwestPage: React.FC = () => {
                                     color: '#16a34a'
                                 }}>
                                     <strong>Asignando:</strong> {iteracionActual.cantidad} unidades de Origen {iteracionActual.fila + 1} a Destino {iteracionActual.columna + 1}
-                                    (costo unitario: {matrizCostos[iteracionActual.fila][iteracionActual.columna]})<br/>
-                                    <strong>Costo parcial:</strong> {iteracionActual.costoParcial}
+                                    ({optimizationGoal === 'max' ? 'beneficio' : 'costo'} unitario: {matrizCostos[iteracionActual.fila]?.[iteracionActual.columna]})<br/>
+                                    <strong>{optimizationGoal === 'max' ? 'Beneficio' : 'Costo'} parcial:</strong> {iteracionActual.costoParcial}
                                 </div>
                             )}
                             
@@ -976,7 +996,7 @@ const NorthwestPage: React.FC = () => {
                             </MatrixTable>
                             
                             <CostTotal>
-                                <span>Costo Total:</span>
+                                <span>{optimizationGoal === 'max' ? 'Beneficio Total:' : 'Costo Total:'}</span>
                                 <strong>
                                     {mostrarResultado ? costoTotalFinal?.toFixed(2) : 
                                      iteracionActual?.costoParcial.toFixed(2)}
