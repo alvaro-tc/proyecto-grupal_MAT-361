@@ -22,6 +22,10 @@ interface IterationStep {
     columna: number;
     cantidad: number;
     costoParcial: number;
+    isOptimization?: boolean;
+    msg?: string;
+    loop?: { r: number, c: number, sign: '+' | '-' }[];
+    theta?: number;
 }
 
 type SimState = 'idle' | 'running' | 'paused' | 'done';
@@ -318,41 +322,215 @@ const convertirANumeros = (
     };
 };
 
+
+
+function findClosedLoop(startCell: {r: number, c: number}, basic: {r: number, c: number}[], R: number, C: number) {
+    const target = startCell;
+    
+    function dfs(curr: {r: number, c: number}, isHorizontal: boolean, path: {r: number, c: number}[]): boolean {
+        if (path.length >= 4 && curr.r === target.r && curr.c === target.c) {
+            return true;
+        }
+        
+        let candidates: {r: number, c: number}[] = [];
+        if (isHorizontal) {
+            candidates = basic.filter(b => b.r === curr.r && b.c !== curr.c);
+            if (path.length >= 3 && target.r === curr.r && target.c !== curr.c) {
+                candidates.push(target);
+            }
+        } else {
+            candidates = basic.filter(b => b.c === curr.c && b.r !== curr.r);
+            if (path.length >= 3 && target.c === curr.c && target.r !== curr.r) {
+                candidates.push(target);
+            }
+        }
+        
+        for (const cand of candidates) {
+            if (cand.r === target.r && cand.c === target.c) {
+                path.push(cand);
+                if (dfs(cand, !isHorizontal, path)) return true;
+                path.pop();
+            } else if (!path.find(p => p.r === cand.r && p.c === cand.c)) {
+                path.push(cand);
+                if (dfs(cand, !isHorizontal, path)) return true;
+                path.pop();
+            }
+        }
+        return false;
+    }
+    
+    let path = [startCell];
+    if (dfs(startCell, true, path)) {
+        path.pop();
+        return path;
+    }
+    path = [startCell];
+    if (dfs(startCell, false, path)) {
+        path.pop();
+        return path;
+    }
+    return null;
+}
+
 const calcularIteraciones = (
     costos: number[][],
     oferta: number[],
-    demanda: number[]
+    demanda: number[],
+    optimizationGoal: 'min' | 'max'
 ): IterationStep[] => {
     const iteraciones: IterationStep[] = [];
+    const asignacion = Array.from({ length: oferta.length }, () => Array(demanda.length).fill(0));
     const ofertaRest = [...oferta];
     const demandaRest = [...demanda];
-    const asignacion = Array.from({ length: oferta.length }, () => Array(demanda.length).fill(0));
+    let basic: {r: number, c: number, val: number}[] = [];
     
-    let fila = 0;
-    let columna = 0;
-    let costoTotal = 0;
-    const EPSILON = 1e-6;
-    
-    while (fila < oferta.length && columna < demanda.length) {
-        const cantidad = Math.min(ofertaRest[fila], demandaRest[columna]);
-        asignacion[fila][columna] = cantidad;
+    let i = 0; let j = 0;
+    while(i < oferta.length && j < demanda.length) {
+        const qty = Math.min(ofertaRest[i], demandaRest[j]);
+        asignacion[i][j] = qty;
+        basic.push({r: i, c: j, val: qty});
         
-        ofertaRest[fila] -= cantidad;
-        demandaRest[columna] -= cantidad;
-        costoTotal += cantidad * costos[fila][columna];
+        ofertaRest[i] -= qty;
+        demandaRest[j] -= qty;
+        
+        let costoTotal = basic.reduce((acc, b) => acc + b.val * costos[b.r][b.c], 0);
         
         iteraciones.push({
             asignacion: asignacion.map(f => [...f]),
             ofertaRestante: [...ofertaRest],
             demandaRestante: [...demandaRest],
-            fila,
-            columna,
-            cantidad,
+            fila: i,
+            columna: j,
+            cantidad: qty,
             costoParcial: costoTotal,
+            isOptimization: false
         });
         
-        if (ofertaRest[fila] <= EPSILON) fila++;
-        if (demandaRest[columna] <= EPSILON) columna++;
+        if (ofertaRest[i] === 0 && demandaRest[j] === 0 && (i < oferta.length - 1 || j < demanda.length - 1)) {
+            i++;
+            basic.push({r: i, c: j, val: 0});
+        } else if (ofertaRest[i] === 0) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+    
+    console.log(`\n=== Fase 1: Solución Inicial (Esquina Noroeste) ===`);
+    console.log(`Z Inicial:`, iteraciones[iteraciones.length - 1].costoParcial);
+    console.log(`Matriz Inicial:`, JSON.parse(JSON.stringify(iteraciones[iteraciones.length - 1].asignacion)));
+    
+    let isOptimal = false;
+    let maxIter = 50;
+    let currentIter = 1;
+    
+    while (!isOptimal && maxIter-- > 0) {
+        const U: (number | null)[] = Array(oferta.length).fill(null);
+        const V: (number | null)[] = Array(demanda.length).fill(null);
+        U[0] = 0;
+        
+        let changed = true;
+        while(changed) {
+            changed = false;
+            for(let b of basic) {
+                if (U[b.r] !== null && V[b.c] === null) {
+                    V[b.c] = costos[b.r][b.c] - U[b.r]!;
+                    changed = true;
+                } else if (V[b.c] !== null && U[b.r] === null) {
+                    U[b.r] = costos[b.r][b.c] - V[b.c]!;
+                    changed = true;
+                }
+            }
+        }
+        
+        for(let r=0; r<U.length; r++) if(U[r]===null) U[r] = 0;
+        for(let c=0; c<V.length; c++) if(V[c]===null) V[c] = 0;
+        
+        let bestDelta = optimizationGoal === 'min' ? -Infinity : Infinity;
+        let entering: {r: number, c: number} | null = null;
+        
+        for(let r=0; r<oferta.length; r++) {
+            for(let c=0; c<demanda.length; c++) {
+                if(!basic.find(b => b.r===r && b.c===c)) {
+                    const delta = U[r]! + V[c]! - costos[r][c];
+                    if (optimizationGoal === 'min' && delta > 0 && delta > bestDelta) {
+                        bestDelta = delta; entering = {r, c};
+                    }
+                    if (optimizationGoal === 'max' && delta < 0 && delta < bestDelta) {
+                        bestDelta = delta; entering = {r, c};
+                    }
+                }
+            }
+        }
+        
+        if (!entering) {
+            isOptimal = true;
+            console.log(`\n¡Solución Óptima Alcanzada! Z =`, basic.reduce((acc, b) => acc + b.val * costos[b.r][b.c], 0));
+            break;
+        }
+        
+        const loopPath = findClosedLoop(entering, basic, oferta.length, demanda.length);
+        if (!loopPath) {
+            console.error("No se encontró circuito cerrado.");
+            break;
+        }
+        
+        let theta = Infinity;
+        let leavingIdx = -1;
+        const loopWithSigns = loopPath.map((cell, idx) => ({
+            r: cell.r, 
+            c: cell.c, 
+            sign: (idx % 2 === 0 ? '+' : '-') as '+' | '-'
+        }));
+        
+        for(let idx=0; idx<loopWithSigns.length; idx++) {
+            if (loopWithSigns[idx].sign === '-') {
+                const b = basic.find(c => c.r===loopWithSigns[idx].r && c.c===loopWithSigns[idx].c);
+                if (b && b.val < theta) {
+                    theta = b.val;
+                    leavingIdx = idx;
+                }
+            }
+        }
+        
+        const leavingCell = loopWithSigns[leavingIdx];
+        
+        console.log(`\n--- Fase 2: Iteración MODI ${currentIter} ---`);
+        console.log(`Celda entrante: (${entering.r}, ${entering.c}) con Cj-Zj = ${bestDelta}`);
+        console.log(`Theta = ${theta}`);
+        
+        for(let idx=0; idx<loopWithSigns.length; idx++) {
+            const cell = loopWithSigns[idx];
+            if (idx===0) {
+                basic.push({r: cell.r, c: cell.c, val: theta});
+                asignacion[cell.r][cell.c] = theta;
+            } else {
+                const b = basic.find(c => c.r===cell.r && c.c===cell.c)!;
+                b.val += (cell.sign === '+' ? theta : -theta);
+                asignacion[cell.r][cell.c] = b.val;
+            }
+        }
+        basic = basic.filter(b => !(b.r===leavingCell.r && b.c===leavingCell.c));
+        
+        const newZ = basic.reduce((acc, b) => acc + b.val * costos[b.r][b.c], 0);
+        console.log(`Z en este paso:`, newZ);
+        console.log(`Matriz resultante:`, JSON.parse(JSON.stringify(asignacion)));
+        
+        iteraciones.push({
+            asignacion: asignacion.map(f => [...f]),
+            ofertaRestante: Array(oferta.length).fill(0),
+            demandaRestante: Array(demanda.length).fill(0),
+            fila: entering.r,
+            columna: entering.c,
+            cantidad: theta,
+            costoParcial: newZ,
+            isOptimization: true,
+            msg: `MODI: Entra celda (Origen ${entering.r + 1}, Destino ${entering.c + 1}). Theta = ${theta}.`,
+            loop: loopWithSigns,
+            theta
+        });
+        
+        currentIter++;
     }
     
     return iteraciones;
@@ -365,15 +543,9 @@ const getInputValue = (val: number | null): string | number => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const NorthwestPage: React.FC = () => {
-    const [matrizCostos, setMatrizCostos] = useState<(number | null)[][]>(() =>
-        crearMatrizVacia(FILAS_INICIALES, COLUMNAS_INICIALES)
-    );
-    const [oferta, setOferta] = useState<(number | null)[]>(() => 
-        crearArrayVacio(FILAS_INICIALES)
-    );
-    const [demanda, setDemanda] = useState<(number | null)[]>(() => 
-        crearArrayVacio(COLUMNAS_INICIALES)
-    );
+    const [matrizCostos, setMatrizCostos] = useState<(number | null)[][]>(() => crearMatrizVacia(FILAS_INICIALES, COLUMNAS_INICIALES));
+    const [oferta, setOferta] = useState<(number | null)[]>(() => crearArrayVacio(FILAS_INICIALES));
+    const [demanda, setDemanda] = useState<(number | null)[]>(() => crearArrayVacio(COLUMNAS_INICIALES));
     
     const [showInstructions, setShowInstructions] = useState(true);
     const [optimizationGoal, setOptimizationGoal] = useState<'min' | 'max'>('min');
@@ -453,10 +625,12 @@ const NorthwestPage: React.FC = () => {
         setCostoTotalFinal(null);
         
         const datosConvertidos = convertirANumeros(currentCostos, currentOferta, currentDemanda);
+        
         const todasIteraciones = calcularIteraciones(
             datosConvertidos.costos, 
             datosConvertidos.oferta, 
-            datosConvertidos.demanda
+            datosConvertidos.demanda,
+            optimizationGoal
         );
         setIteraciones(todasIteraciones);
         setCurrentIteration(0);
@@ -478,7 +652,7 @@ const NorthwestPage: React.FC = () => {
             setSimState('done');
             message.success('¡Solución encontrada!');
         }
-    }, [matrizCostos, oferta, demanda, isBalanced, validateInputs]);
+    }, [matrizCostos, oferta, demanda, validateInputs, optimizationGoal]);
 
     const stopSimulation = () => {
         simAbort.current = true;
@@ -941,6 +1115,33 @@ const NorthwestPage: React.FC = () => {
                                 )}
                             </IterationHeader>
                             
+                            {optimizationGoal === 'max' && (
+                                <div style={{ 
+                                    marginBottom: '1rem', 
+                                    padding: '0.75rem', 
+                                    background: '#eef2ff', 
+                                    border: '1px solid #c7d2fe',
+                                    borderRadius: '8px',
+                                    color: '#3730a3',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <strong>Nota:</strong> Se ha aplicado una búsqueda de <strong>Mejor Beneficio</strong> para optimizar las asignaciones, maximizando la ganancia en cada paso disponible.
+                                </div>
+                            )}
+                            {optimizationGoal === 'min' && (
+                                <div style={{ 
+                                    marginBottom: '1rem', 
+                                    padding: '0.75rem', 
+                                    background: '#eef2ff', 
+                                    border: '1px solid #c7d2fe',
+                                    borderRadius: '8px',
+                                    color: '#3730a3',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <strong>Nota:</strong> Se ha aplicado una búsqueda de <strong>Mínimo Costo</strong> para optimizar las asignaciones, minimizando el gasto en cada paso disponible.
+                                </div>
+                            )}
+
                             {mostrarIteracion && (
                                 <div style={{ 
                                     marginBottom: '1rem', 
