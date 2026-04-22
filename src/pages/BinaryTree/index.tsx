@@ -7,6 +7,7 @@ import {
   ThunderboltOutlined,
   NodeIndexOutlined,
   ReloadOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import {
   PageContainer,
@@ -560,7 +561,7 @@ export default function BinaryTree() {
           <text
             x={node.x} y={node.y}
             textAnchor="middle" dominantBaseline="central"
-            fill="white" fontSize="12" fontWeight="700"
+            fill="white" fontSize="14.5" fontWeight="700"
             style={{ userSelect: "none", pointerEvents: "none" }}
           >
             {node.value}
@@ -573,10 +574,10 @@ export default function BinaryTree() {
             {/* Arrow label showing comparison direction */}
             <text
               x={node.x}
-              y={node.y + NODE_RADIUS + 18}
               textAnchor="middle"
+              y={node.y + NODE_RADIUS + 22}
               fill={COMPARE_COLOR}
-              fontSize="11"
+              fontSize="14.5"
               fontWeight="700"
               style={{ userSelect: "none", pointerEvents: "none" }}
             >
@@ -696,7 +697,7 @@ export default function BinaryTree() {
                   Un número: inserción animada mostrando el recorrido. Varios (separados por espacio): inserción directa.
                 </p>
                 {isAnimating && (
-                  <p style={{ margin: 0, fontSize: "0.8rem", color: COMPARE_COLOR, fontWeight: 600 }}>
+                  <p style={{ margin: 0, fontSize: "0.9rem", color: COMPARE_COLOR, fontWeight: 600 }}>
                     ⏳ Insertando {insertAnim?.value}… paso {(insertAnim?.currentStep ?? 0) + 1}/{insertAnim?.steps.length}
                   </p>
                 )}
@@ -738,7 +739,7 @@ export default function BinaryTree() {
                     onClick={() => setRebuildMode("preorder")}
                     style={{
                       flex: 1, padding: "0.4rem 0", border: "none", borderRadius: 8,
-                      cursor: "pointer", fontWeight: 700, fontSize: "0.82rem",
+                      cursor: "pointer", fontWeight: 700, fontSize: "0.9rem",
                       background: rebuildMode === "preorder" ? "#7c3aed" : "#f0f2f5",
                       color: rebuildMode === "preorder" ? "white" : "#4a5568",
                       transition: "all 0.2s",
@@ -750,7 +751,7 @@ export default function BinaryTree() {
                     onClick={() => setRebuildMode("postorder")}
                     style={{
                       flex: 1, padding: "0.4rem 0", border: "none", borderRadius: 8,
-                      cursor: "pointer", fontWeight: 700, fontSize: "0.82rem",
+                      cursor: "pointer", fontWeight: 700, fontSize: "0.9rem",
                       background: rebuildMode === "postorder" ? "#f59e0b" : "#f0f2f5",
                       color: rebuildMode === "postorder" ? "white" : "#4a5568",
                       transition: "all 0.2s",
@@ -760,7 +761,7 @@ export default function BinaryTree() {
                   </button>
                 </div>
 
-                <p style={{ margin: 0, fontSize: "0.75rem", color: "#a0aec0" }}>
+                <p style={{ margin: 0, fontSize: "0.8rem", color: "#a0aec0" }}>
                   {rebuildMode === "preorder"
                     ? "El primer valor es la raíz. Luego sus hijos izq/der."
                     : "El último valor es la raíz. Los anteriores son sus hijos."}
@@ -804,7 +805,7 @@ export default function BinaryTree() {
                 onClick={() => activeTraversal === "inorder" ? stopTraversal() : startTraversal("inorder")}
                 style={{
                   width: "100%", padding: "0.5rem 1rem", border: "none", borderRadius: 10,
-                  cursor: "pointer", fontWeight: 700, fontSize: "0.85rem",
+                  cursor: "pointer", fontWeight: 700, fontSize: "0.9rem",
                   display: "flex", alignItems: "center", gap: "0.5rem",
                   background: activeTraversal === "inorder" ? "#10b981" : "rgba(16,185,129,0.1)",
                   color: activeTraversal === "inorder" ? "white" : "#10b981",
@@ -825,7 +826,7 @@ export default function BinaryTree() {
                 onClick={() => activeTraversal === "preorder" ? stopTraversal() : startTraversal("preorder")}
                 style={{
                   width: "100%", padding: "0.5rem 1rem", border: "none", borderRadius: 10,
-                  cursor: "pointer", fontWeight: 700, fontSize: "0.85rem",
+                  cursor: "pointer", fontWeight: 700, fontSize: "0.9rem",
                   display: "flex", alignItems: "center", gap: "0.5rem",
                   background: activeTraversal === "preorder" ? "#7c3aed" : "rgba(124,58,237,0.1)",
                   color: activeTraversal === "preorder" ? "white" : "#7c3aed",
@@ -846,7 +847,7 @@ export default function BinaryTree() {
                 onClick={() => activeTraversal === "postorder" ? stopTraversal() : startTraversal("postorder")}
                 style={{
                   width: "100%", padding: "0.5rem 1rem", border: "none", borderRadius: 10,
-                  cursor: "pointer", fontWeight: 700, fontSize: "0.85rem",
+                  cursor: "pointer", fontWeight: 700, fontSize: "0.9rem",
                   display: "flex", alignItems: "center", gap: "0.5rem",
                   background: activeTraversal === "postorder" ? "#f59e0b" : "rgba(245,158,11,0.1)",
                   color: activeTraversal === "postorder" ? "white" : "#b45309",
@@ -865,7 +866,7 @@ export default function BinaryTree() {
 
             {traversalSeq.length > 0 && (
               <>
-                <p style={{ margin: 0, fontSize: "0.75rem", color: "#a0aec0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <p style={{ margin: 0, fontSize: "0.9rem", color: "#a0aec0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Secuencia
                 </p>
                 <TraversalSequence>
@@ -885,6 +886,44 @@ export default function BinaryTree() {
 
         </RightPanel>
       </MainLayout>
+
+      {/* Instructions Card at the bottom */}
+      <Card style={{ marginTop: "1rem" }}>
+        <CardTitle><QuestionCircleOutlined /> Instrucciones</CardTitle>
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", 
+          gap: "1.5rem",
+          fontSize: "0.85rem", 
+          color: "#4a5568",
+          fontFamily: "inherit",
+          lineHeight: "1.6"
+        }}>
+          <div>
+            <div style={{ marginBottom: "4px" }}>🔨 Construcción e Inserción</div>
+            <div>
+              Ingresa un número para iniciar la animación paso a paso. Verás cómo el sistema compara el valor con cada nodo para decidir si ir a la izquierda o derecha. Para construir árboles grandes rápidamente, ingresa varios números separados por espacios.
+            </div>
+          </div>
+          <div>
+            <div style={{ marginBottom: "4px" }}>🔍 Recorridos (Traversals)</div>
+            <div>
+              Los botones de recorrido animan el orden de visita. Los puntos en los nodos indican el momento exacto:
+              <ul style={{ margin: "4px 0 0 1.2rem", padding: 0 }}>
+                <li>Izquierda: Se visita antes de bajar a los hijos (Pre-order).</li>
+                <li>Arriba: Se visita entre el hijo izquierdo y el derecho (In-order).</li>
+                <li>Derecha: Se visita después de procesar ambos hijos (Post-order).</li>
+              </ul>
+            </div>
+          </div>
+          <div>
+            <div style={{ marginBottom: "4px" }}>🔄 Reconstrucción y Archivos</div>
+            <div>
+              En la pestaña Reconstruir, puedes recrear la estructura exacta de un árbol pegando su secuencia de Pre-Order o Post-Order. Usa Exportar para guardar tu árbol como archivo JSON e Importar para cargarlo de nuevo.
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* ── Random Modal ───────────────────────────────────────────────────── */}
       {randomModal && (

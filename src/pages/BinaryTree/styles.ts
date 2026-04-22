@@ -78,7 +78,7 @@ export const Tab = styled.button<{ active?: boolean }>`
   cursor: pointer;
   padding: 0.4rem 0.8rem;
   border-radius: 8px;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: ${({ active }) => (active ? '#2e186a' : '#a0aec0')};
   background: ${({ active }) => (active ? 'rgba(46, 24, 106, 0.08)' : 'transparent')};
@@ -123,7 +123,7 @@ export const ActionButton = styled.button<{ variant?: 'primary' | 'secondary' | 
   cursor: pointer;
   border-radius: 10px;
   padding: 0.5rem 1rem;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -190,7 +190,7 @@ export const TraversalLegend = styled.div`
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   color: #4a5568;
 `;
 
@@ -227,7 +227,7 @@ export const SeqItem = styled.span<{ active?: boolean }>`
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   font-weight: 700;
   transition: all 0.3s ease;
   background: ${({ active }) => active ? '#2e186a' : '#e2e8f0'};
@@ -268,7 +268,7 @@ export const ModalTitle = styled.h2`
 `;
 
 export const FormLabel = styled.label`
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: #4a5568;
   display: block;
@@ -300,7 +300,7 @@ export const EmptyState = styled.div`
   min-height: 300px;
   gap: 1rem;
   color: #a0aec0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   user-select: none;
 `;
 
@@ -321,7 +321,7 @@ export const PageTitle = styled.div`
   }
   
   span.subtitle {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     color: #a0aec0;
     font-weight: 400;
   }
