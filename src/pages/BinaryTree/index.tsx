@@ -52,7 +52,7 @@ type TraversalType = "inorder" | "preorder" | "postorder";
 
 // Colors
 const DOT_PRE      = "#7c3aed";  // left dot   — pre-order
-const DOT_IN       = "#10b981";  // top dot    — in-order
+const DOT_IN       = "#10b981";  // bottom dot — in-order
 const DOT_POST     = "#f59e0b";  // right dot  — post-order
 const NODE_COLOR   = "#2e186a";  // normal node
 const COMPARE_COLOR = "#ef4444"; // red: node being compared on insert
@@ -614,9 +614,9 @@ export default function BinaryTree() {
           style={{ transition: "opacity 0.25s" }}
         />
 
-        {/* In-order dot — TOP of node (separated outside) */}
+        {/* In-order dot — BOTTOM of node (separated outside) */}
         <circle
-          cx={node.x} cy={node.y - DOT_OFFSET}
+          cx={node.x} cy={node.y + DOT_OFFSET}
           r={DOT_RADIUS}
           fill={DOT_IN}
           opacity={inVisited ? 1 : 0.2}
@@ -675,7 +675,7 @@ export default function BinaryTree() {
           {/* Traversal legend */}
           <TraversalLegend style={{ marginTop: "0.75rem" }}>
             <LegendItem><LegendDot color={DOT_PRE} /> Pre-order (izquierda)</LegendItem>
-            <LegendItem><LegendDot color={DOT_IN} /> In-order (arriba)</LegendItem>
+            <LegendItem><LegendDot color={DOT_IN} /> In-order (abajo)</LegendItem>
             <LegendItem><LegendDot color={DOT_POST} /> Post-order (derecha)</LegendItem>
           </TraversalLegend>
         </CanvasWrapper>
@@ -800,7 +800,7 @@ export default function BinaryTree() {
           <Card>
             <CardTitle>🔍 Recorridos</CardTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {/* In-Order — verde (#10b981) = punto arriba */}
+              {/* In-Order — verde (#10b981) = punto abajo */}
               <button
                 onClick={() => activeTraversal === "inorder" ? stopTraversal() : startTraversal("inorder")}
                 style={{
@@ -818,7 +818,7 @@ export default function BinaryTree() {
                   background: "#10b981", display: "inline-block", flexShrink: 0,
                   border: activeTraversal === "inorder" ? "2px solid white" : "none",
                 }} />
-                {activeTraversal === "inorder" ? "⏹ Detener In-Order" : "▶ In-Order (arriba)"}
+                {activeTraversal === "inorder" ? "⏹ Detener In-Order" : "▶ In-Order (abajo)"}
               </button>
 
               {/* Pre-Order — morado (#7c3aed) = punto izquierda */}
@@ -911,7 +911,7 @@ export default function BinaryTree() {
               Los botones de recorrido animan el orden de visita. Los puntos en los nodos indican el momento exacto:
               <ul style={{ margin: "4px 0 0 1.2rem", padding: 0 }}>
                 <li>Izquierda: Se visita antes de bajar a los hijos (Pre-order).</li>
-                <li>Arriba: Se visita entre el hijo izquierdo y el derecho (In-order).</li>
+                <li>Abajo: Se visita entre el hijo izquierdo y el derecho (In-order).</li>
                 <li>Derecha: Se visita después de procesar ambos hijos (Post-order).</li>
               </ul>
             </div>
