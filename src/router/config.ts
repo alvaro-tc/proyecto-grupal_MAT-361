@@ -35,6 +35,11 @@ const routes = [
     component: "SelectionSort",
   },
   {
+    path: "/algorithms/insertion-sort",
+    exact: true,
+    component: "InsertionSort",
+  },
+  {
     path: "/login",
     exact: true,
     component: "Login",
