@@ -198,11 +198,29 @@ const Header = ({ t }: { t: TFunction }) => {
                     borderRadius: "8px",
                     fontFamily: "'Motiva Sans Bold', serif",
                     color: "#2e186a",
+                    marginBottom: "4px",
                     fontSize: "0.95rem",
                   }}
                 >
                   <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
                   Insertion Sort
+                </AntMenu.Item>
+                <AntMenu.Item
+                  key="binary-tree"
+                  onClick={() => {
+                    history.push("/algorithms/binary-tree");
+                    setVisibility(false);
+                  }}
+                  style={{
+                    padding: "12px 20px",
+                    borderRadius: "8px",
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: "#2e186a",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🌳</span>
+                  Árboles Binarios
                 </AntMenu.Item>
               </AntMenu>
             }
