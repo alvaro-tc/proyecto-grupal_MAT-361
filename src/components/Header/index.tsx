@@ -169,6 +169,23 @@ const Header = ({ t }: { t: TFunction }) => {
                   <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🟣</span>
                   Esquina Noroeste
                 </AntMenu.Item>
+                <AntMenu.Item
+                  key="selection-sort"
+                  onClick={() => {
+                    history.push("/algorithms/selection-sort");
+                    setVisibility(false);
+                  }}
+                  style={{
+                    padding: "12px 20px",
+                    borderRadius: "8px",
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: "#2e186a",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
+                  Selection Sort
+                </AntMenu.Item>
               </AntMenu>
             }
             trigger={['hover']}

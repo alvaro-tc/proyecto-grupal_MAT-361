@@ -30,6 +30,11 @@ const routes = [
     component: "Assignment",
   },
   {
+    path: "/algorithms/selection-sort",
+    exact: true,
+    component: "SelectionSort",
+  },
+  {
     path: "/login",
     exact: true,
     component: "Login",
