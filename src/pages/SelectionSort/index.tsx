@@ -3,7 +3,7 @@ import styled, { keyframes, css } from 'styled-components';
 import { Button, InputNumber, Slider, message } from 'antd';
 import {
   PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
-  DeleteOutlined, PlusOutlined,
+  DeleteOutlined, PlusOutlined, ExportOutlined, ImportOutlined,
 } from '@ant-design/icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -304,8 +304,8 @@ function calcSquareSize(
   const padding = 32;
   const available = Math.max(160, containerWidth - padding);
   const fitSize = Math.floor((available - gap * Math.max(count - 1, 0)) / Math.max(count, 1));
-  const MAX_S = Math.min(90, Math.max(30, fitSize));
-  const MIN_S = Math.max(22, Math.floor(MAX_S * 0.42));
+  const MAX_S = Math.min(110, Math.max(32, fitSize));
+  const MIN_S = Math.max(24, Math.floor(MAX_S * 0.45));
   if (maxVal === minVal) return Math.round((MAX_S + MIN_S) / 2);
   const pct = (value - minVal) / (maxVal - minVal);
   return Math.round(MIN_S + pct * (MAX_S - MIN_S));
@@ -344,14 +344,16 @@ const SelectionSort: React.FC = () => {
   const isPausedRef      = useRef(false);
   const stopRef          = useRef(false);
   const speedRef         = useRef(500);
-  const barsContainerRef = useRef<HTMLDivElement>(null);
+  const canvasRef        = useRef<HTMLDivElement>(null);
+  const fileInputRef     = useRef<HTMLInputElement>(null);
   const [containerWidth, setContainerWidth] = useState(700);
 
   useEffect(() => {
-    const el = barsContainerRef.current;
+    const el = canvasRef.current;
     if (!el) return;
     const ro = new ResizeObserver(entries => {
-      setContainerWidth(entries[0].contentRect.width);
+      // Use the width of the canvas minus some padding for safety
+      setContainerWidth(entries[0].contentRect.width - 48);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -418,6 +420,61 @@ const SelectionSort: React.FC = () => {
   const handleSpeedChange = useCallback((val: number) => {
     setSimSpeed(val);
     speedRef.current = val;
+  }, []);
+
+  const handleExportJSON = useCallback(() => {
+    const values = elements.map(e => e.value);
+    const dataStr = JSON.stringify(values, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'selection-sort-data.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    message.success('Archivo exportado correctamente');
+  }, [elements]);
+
+  const handleImportJSON = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+
+        if (!Array.isArray(parsed)) {
+          throw new Error('El archivo debe contener un arreglo de números');
+        }
+
+        const numericArray = parsed.map(v => {
+          const num = Number(v);
+          if (isNaN(num)) throw new Error('Todos los elementos deben ser números');
+          return num;
+        });
+
+        if (numericArray.length > MAX_ELEMS) {
+          message.warning(`El archivo excede el máximo de ${MAX_ELEMS} elementos. Se truncará.`);
+          numericArray.splice(MAX_ELEMS);
+        }
+
+        stopRef.current = true;
+        setElements(makeElements(numericArray));
+        setSimPhase('idle');
+        setComparisons(0);
+        setSwaps(0);
+        message.success('Archivo importado correctamente');
+      } catch (err: any) {
+        message.error(`Error al importar: ${err.message}`);
+      }
+      // Reset input value to allow importing the same file again
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   }, []);
 
   // ── Solver ──────────────────────────────────────────────────────────────────
@@ -651,6 +708,26 @@ const SelectionSort: React.FC = () => {
             >
               Reiniciar
             </Button>
+            <Button
+              icon={<ExportOutlined />} onClick={handleExportJSON}
+              style={{ borderRadius: 8 }}
+            >
+              Exportar JSON
+            </Button>
+            <Button
+              icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}
+              disabled={isRunning}
+              style={{ borderRadius: 8 }}
+            >
+              Importar JSON
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              accept=".json"
+              onChange={handleImportJSON}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
               <span style={{ fontSize: '0.82rem', color: '#4a5568', whiteSpace: 'nowrap' }}>
                 Velocidad:
@@ -683,7 +760,7 @@ const SelectionSort: React.FC = () => {
           )}
 
           {/* Canvas */}
-          <CanvasCard>
+          <CanvasCard ref={canvasRef}>
             <div style={{
               fontFamily: "'Motiva Sans Bold', serif",
               color: '#2e186a',
@@ -717,7 +794,7 @@ const SelectionSort: React.FC = () => {
                 Genera elementos aleatorios o agrégalos manualmente para comenzar
               </div>
             ) : (
-              <BarsContainer ref={barsContainerRef}>
+              <BarsContainer>
                 {elements.map((el, i) => {
                   const size  = calcSquareSize(containerWidth, elements.length, el.value, minVal, maxVal);
                   const color = el.state === 'sorted'   ? '#16a34a'
