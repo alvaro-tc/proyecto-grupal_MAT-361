@@ -18,10 +18,15 @@ interface SortElement {
   state: ElementState;
 }
 
-// ─── Animation ────────────────────────────────
+// ─── Animations ────────────────────────────────
 const pulse = keyframes`
   0%,100% { transform: scale(1); }
   50% { transform: scale(1.08); }
+`;
+
+const moveUp = keyframes`
+  from { transform: translateY(10px); opacity: 0.7; }
+  to { transform: translateY(0); opacity: 1; }
 `;
 
 // ─── Styled ───────────────────────────────────
@@ -52,7 +57,7 @@ const BarsContainer = styled.div`
   width: 100%;
 `;
 
-// ─── Square ───────────────────────────────────
+// ─── Square (CON ANIMACIÓN REAL) ─────────────
 const Square = styled.div<{ state: ElementState; size: number }>`
   width: ${p => p.size}px;
   height: ${p => p.size}px;
@@ -60,8 +65,10 @@ const Square = styled.div<{ state: ElementState; size: number }>`
   align-items: center;
   justify-content: center;
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: bold;
+  transition: all 0.3s ease;
+  animation: ${moveUp} 0.3s ease;
 
   background: ${p =>
     p.state === 'sorted' ? '#16a34a' :
@@ -70,7 +77,7 @@ const Square = styled.div<{ state: ElementState; size: number }>`
     '#3b82f6'};
 
   ${p => (p.state === 'dividing' || p.state === 'merging') && css`
-    animation: ${pulse} 0.6s ease;
+    animation: ${pulse} 0.5s ease;
   `}
 `;
 
@@ -107,7 +114,7 @@ const MergeSort: React.FC = () => {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ─── IMPORT / EXPORT RESTAURADO ─────────────
+  // ─── IMPORT / EXPORT ─────────────────────────
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -169,6 +176,11 @@ const MergeSort: React.FC = () => {
         setComparisons(c => c + 1);
         setPointers({ i: l + i, j: m + 1 + j, k });
 
+        setElements(arr.map((v, idx) => ({
+          value: v,
+          state: idx >= l && idx <= r ? 'merging' : 'default'
+        })));
+
         await sleep(speed);
 
         if (left[i] <= right[j]) arr[k++] = left[i++];
@@ -197,6 +209,13 @@ const MergeSort: React.FC = () => {
 
       const m = Math.floor((l + r) / 2);
 
+      setElements(arr.map((v, idx) => ({
+        value: v,
+        state: idx >= l && idx <= r ? 'dividing' : 'default'
+      })));
+
+      await sleep(speed);
+
       await mergeSort(l, m);
       await mergeSort(m + 1, r);
       await merge(l, m, r);
@@ -222,17 +241,19 @@ const MergeSort: React.FC = () => {
   return (
     <Wrap>
       <h2>Merge Sort</h2>
-      <p style={{ 
-  marginTop: 5,
-  padding: '8px 12px',
-  background: '#eef2ff',
-  borderRadius: 8,
-  fontSize: 13,
-  color: '#4338ca'
-}}>
-  🔍 Merge Sort divide el arreglo en mitades y luego las combina en orden.
-  Los punteros ⬇ i, j y k muestran el progreso del algoritmo en tiempo real.
-</p>
+
+      {/* INSTRUCCIONES */}
+      <Card>
+        <b>📌 Instrucciones</b>
+        <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+          👉 Agrega números o usa Aleatorio<br />
+          👉 Ejecutar inicia el algoritmo<br />
+          👉 Velocidad controla animación<br />
+          👉 Importar / Exportar maneja JSON<br />
+          👉 Punteros ⬇ muestran i, j, k en tiempo real
+        </p>
+      </Card>
+
       <Top>
         <InputNumber value={input} onChange={setInput} />
         <Button icon={<PlusOutlined />} onClick={handleAdd}>Agregar</Button>
@@ -245,20 +266,12 @@ const MergeSort: React.FC = () => {
           Ejecutar
         </Button>
 
-        <Button icon={<ExportOutlined />} onClick={handleExport}>
-          Exportar
-        </Button>
-
+        <Button icon={<ExportOutlined />} onClick={handleExport}>Exportar</Button>
         <Button icon={<ImportOutlined />} onClick={() => fileRef.current?.click()}>
           Importar
         </Button>
 
-        <input
-          type="file"
-          ref={fileRef}
-          hidden
-          onChange={handleImport}
-        />
+        <input type="file" ref={fileRef} hidden onChange={handleImport} />
       </Top>
 
       <div style={{ marginTop: 10 }}>
@@ -271,29 +284,11 @@ const MergeSort: React.FC = () => {
         <div>🔄 Movimientos: {moves}</div>
       </Stats>
 
-      <Card>
-  <b>📌 Instrucciones de uso</b>
-
-  <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-    👉 Ingresa números manualmente o usa <b>“Aleatorio”</b> para generar el arreglo.<br />
-    👉 Presiona <b>“Ejecutar”</b> para iniciar el Merge Sort.<br />
-    👉 Usa <b>“Velocidad”</b> para controlar la animación.<br />
-    👉 <b>Importar</b> carga datos desde JSON.<br />
-    👉 <b>Exportar</b> guarda los datos actuales.<br />
-    👉 Los punteros ⬇ i, j y k muestran el recorrido del algoritmo.
-  </p>
-</Card>
-
       {/* VISUAL + PUNTEROS */}
       <BarsContainer>
         {elements.map((el, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            
-            <div style={{ height: 18, fontSize: 12, fontWeight: 'bold' }}>
-              {pointers.i === i && '⬇ i'}
-              {pointers.j === i && '⬇ j'}
-              {pointers.k === i && '⬇ k'}
-            </div>
+            <div style={{ height: 18 }}>{pointers.i === i && '⬇ i'}{pointers.j === i && '⬇ j'}{pointers.k === i && '⬇ k'}</div>
 
             <Square state={el.state} size={getSize(el.value)}>
               {el.value}
@@ -301,6 +296,14 @@ const MergeSort: React.FC = () => {
           </div>
         ))}
       </BarsContainer>
+
+      {/* LEYENDA REAL */}
+      <Card>
+        <b>Leyenda</b>
+        <p>
+          🔵 Default | 🟣 Dividing | 🟠 Merging | 🟢 Sorted
+        </p>
+      </Card>
     </Wrap>
   );
 };
