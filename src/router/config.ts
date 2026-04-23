@@ -40,6 +40,11 @@ const routes = [
     component: "InsertionSort",
   },
   {
+  path: "/algorithms/merge-sort",
+  exact: true,
+  component: "MergeSort",
+},
+  {
     path: "/algorithms/shell-sort",
     exact: true,
     component: "ShellSort",
