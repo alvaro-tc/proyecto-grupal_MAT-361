@@ -40,6 +40,11 @@ const routes = [
     component: "InsertionSort",
   },
   {
+    path: "/algorithms/shell-sort",
+    exact: true,
+    component: "ShellSort",
+  },
+  {
     path: "/algorithms/binary-tree",
     exact: true,
     component: "BinaryTree",
