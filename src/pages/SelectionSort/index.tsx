@@ -1,12 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { Button, InputNumber, Slider, message } from 'antd';
+import { Button, InputNumber, Slider, message, Modal } from 'antd';
 import {
   PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
   DeleteOutlined, PlusOutlined, ExportOutlined, ImportOutlined,
 } from '@ant-design/icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type SortOrder = 'asc' | 'desc';
 type ElementState = 'default' | 'sorted' | 'outer' | 'minFound' | 'scanning' | 'swapping';
 type SimPhase = 'idle' | 'running' | 'paused' | 'done';
 
@@ -335,6 +336,8 @@ const SelectionSort: React.FC = () => {
   const [comparisons, setComparisons] = useState(0);
   const [swaps, setSwaps] = useState(0);
 
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [randCount, setRandCount] = useState(10);
   const [randMin, setRandMin]     = useState(1);
   const [randMax, setRandMax]     = useState(100);
@@ -491,6 +494,7 @@ const SelectionSort: React.FC = () => {
     const n = arr.length;
     let comps = 0;
     let swapsCount = 0;
+    const isAsc = sortOrder === 'asc';
 
     const show = (states: ElementState[]) => {
       setElements(arr.map((v, i) => ({ value: v, state: states[i] })));
@@ -499,7 +503,7 @@ const SelectionSort: React.FC = () => {
     for (let i = 0; i < n - 1; i++) {
       if (stopRef.current) break;
 
-      let minIdx = i;
+      let targetIdx = i;
 
       // Highlight the position we're filling
       show(arr.map((_, idx) => {
@@ -509,7 +513,7 @@ const SelectionSort: React.FC = () => {
       }));
       await sleep(speedRef.current * 0.55);
 
-      // Scan for minimum
+      // Scan for minimum (asc) or maximum (desc)
       for (let j = i + 1; j < n; j++) {
         while (isPausedRef.current && !stopRef.current) await sleep(50);
         if (stopRef.current) break;
@@ -518,34 +522,34 @@ const SelectionSort: React.FC = () => {
         setComparisons(comps);
 
         show(arr.map((_, idx) => {
-          if (idx < i)       return 'sorted';
-          if (idx === minIdx) return 'minFound';
-          if (idx === j)      return 'scanning';
+          if (idx < i)          return 'sorted';
+          if (idx === targetIdx) return 'minFound';
+          if (idx === j)         return 'scanning';
           return 'default';
         }));
 
         await sleep(speedRef.current);
 
-        if (arr[j] < arr[minIdx]) {
-          minIdx = j;
+        if (isAsc ? arr[j] < arr[targetIdx] : arr[j] > arr[targetIdx]) {
+          targetIdx = j;
         }
       }
 
       if (stopRef.current) break;
 
       // Swap if needed
-      if (minIdx !== i) {
+      if (targetIdx !== i) {
         swapsCount++;
         setSwaps(swapsCount);
 
         show(arr.map((_, idx) => {
-          if (idx < i)                       return 'sorted';
-          if (idx === i || idx === minIdx)    return 'swapping';
+          if (idx < i)                           return 'sorted';
+          if (idx === i || idx === targetIdx)    return 'swapping';
           return 'default';
         }));
         await sleep(speedRef.current * 1.25);
 
-        [arr[i], arr[minIdx]] = [arr[minIdx], arr[i]];
+        [arr[i], arr[targetIdx]] = [arr[targetIdx], arr[i]];
       }
 
       // Mark position i as sorted
@@ -557,7 +561,7 @@ const SelectionSort: React.FC = () => {
       setElements(arr.map(v => ({ value: v, state: 'sorted' })));
       setSimPhase('done');
     }
-  }, [elements]);
+  }, [elements, sortOrder]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   const isRunning = simPhase === 'running';
@@ -663,9 +667,9 @@ const SelectionSort: React.FC = () => {
           <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
             <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
             <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
-              Selection Sort busca repetidamente el elemento <strong>mínimo</strong> de la parte no ordenada
+              Selection Sort busca repetidamente el elemento <strong>{sortOrder === 'asc' ? 'mínimo' : 'máximo'}</strong> de la parte no ordenada
               y lo coloca en la siguiente posición correcta. El triángulo rojo señala el elemento
-              que se está comparando y el naranja marca el mínimo encontrado hasta ahora.
+              que se está comparando y el naranja marca el {sortOrder === 'asc' ? 'mínimo' : 'máximo'} encontrado hasta ahora.
             </p>
             <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
               <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
@@ -680,7 +684,7 @@ const SelectionSort: React.FC = () => {
             {(simPhase === 'idle' || isDone) && (
               <Button
                 type="primary" icon={<PlayCircleOutlined />}
-                onClick={handleSolve} disabled={elements.length < 2}
+                onClick={() => setShowOrderModal(true)} disabled={elements.length < 2}
                 style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
               >
                 {isDone ? 'Resolver de nuevo' : 'Resolver'}
@@ -753,7 +757,7 @@ const SelectionSort: React.FC = () => {
               </StatBadge>
               {isDone && (
                 <StatBadge style={{ color: '#16a34a' }}>
-                  ✅ ¡Ordenado completamente!
+                  ✅ ¡Ordenado {sortOrder === 'asc' ? 'ascendente' : 'descendente'}!
                 </StatBadge>
               )}
             </StatsRow>
@@ -844,7 +848,7 @@ const SelectionSort: React.FC = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
               <LegendDot dotColor="hsl(200, 65%, 52%)" borderColor="#d97706" />
-              Mínimo actual
+              {sortOrder === 'asc' ? 'Mínimo actual' : 'Máximo actual'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
               <LegendDot dotColor="hsl(200, 65%, 52%)" borderColor="#dc2626" />
@@ -861,6 +865,56 @@ const SelectionSort: React.FC = () => {
           </LegendRow>
         </CenterPanel>
       </MainArea>
+
+      <Modal
+        open={showOrderModal}
+        title={
+          <span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', fontSize: '1.1rem' }}>
+            ¿Cómo deseas ordenar?
+          </span>
+        }
+        onCancel={() => setShowOrderModal(false)}
+        footer={null}
+        centered
+        width={420}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '0.75rem 0 0.25rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            {(['asc', 'desc'] as SortOrder[]).map(order => (
+              <div
+                key={order}
+                onClick={() => setSortOrder(order)}
+                style={{
+                  flex: 1,
+                  border: `2px solid ${sortOrder === order ? '#2e186a' : '#e2e8f0'}`,
+                  borderRadius: 12,
+                  padding: '1.25rem 1rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: sortOrder === order ? '#f5f3ff' : 'white',
+                  transition: 'all 0.2s',
+                  boxShadow: sortOrder === order ? '0 4px 12px rgba(46,24,106,0.15)' : 'none',
+                }}
+              >
+                <div style={{ fontSize: '2.2rem' }}>{order === 'asc' ? '⬆️' : '⬇️'}</div>
+                <div style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', marginTop: 8, fontSize: '0.95rem' }}>
+                  {order === 'asc' ? 'Ascendente' : 'Descendente'}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 3 }}>
+                  {order === 'asc' ? 'menor → mayor' : 'mayor → menor'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="primary" size="large" icon={<PlayCircleOutlined />}
+            onClick={() => { setShowOrderModal(false); handleSolve(); }}
+            style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+          >
+            Comenzar
+          </Button>
+        </div>
+      </Modal>
     </Wrap>
   );
 };

@@ -1,12 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { Button, InputNumber, Slider, message } from 'antd';
+import { Button, InputNumber, Slider, message, Modal } from 'antd';
 import {
   PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
   DeleteOutlined, PlusOutlined, ExportOutlined, ImportOutlined,
 } from '@ant-design/icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type SortOrder = 'asc' | 'desc';
 type ElementState = 'default' | 'sorted' | 'outer' | 'minFound' | 'scanning' | 'swapping';
 type SimPhase = 'idle' | 'running' | 'paused' | 'done';
 
@@ -332,6 +333,8 @@ const InsertionSort: React.FC = () => {
   const [comparisons, setComparisons] = useState(0);
   const [swaps, setSwaps] = useState(0);
 
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [randCount, setRandCount] = useState(10);
   const [randMin, setRandMin]     = useState(1);
   const [randMax, setRandMax]     = useState(100);
@@ -486,6 +489,7 @@ const InsertionSort: React.FC = () => {
     const n = arr.length;
     let comps = 0;
     let shifts = 0;
+    const isAsc = sortOrder === 'asc';
 
     const show = (states: ElementState[]) => {
       setElements(arr.map((v, i) => ({ value: v, state: states[i] })));
@@ -519,13 +523,14 @@ const InsertionSort: React.FC = () => {
         // Scan/Compare
         show(arr.map((_, idx) => {
           if (idx === j) return 'scanning';
-          if (idx === j + 1) return 'minFound'; // Use minFound as "Key" position
+          if (idx === j + 1) return 'minFound';
           if (idx <= i) return 'sorted';
           return 'default';
         }));
         await sleep(speedRef.current);
 
-        if (arr[j] > key) {
+        const shouldShift = isAsc ? arr[j] > key : arr[j] < key;
+        if (shouldShift) {
           // Shift
           arr[j + 1] = arr[j];
           shifts++;
@@ -537,11 +542,10 @@ const InsertionSort: React.FC = () => {
             return 'default';
           }));
           await sleep(speedRef.current * 0.8);
-          
+
           j = j - 1;
-          arr[j + 1] = key; // Update key position for visual feedback
+          arr[j + 1] = key;
         } else {
-          // Found position
           break;
         }
       }
@@ -557,7 +561,7 @@ const InsertionSort: React.FC = () => {
       setElements(arr.map(v => ({ value: v, state: 'sorted' })));
       setSimPhase('done');
     }
-  }, [elements]);
+  }, [elements, sortOrder]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   const isRunning = simPhase === 'running';
@@ -673,7 +677,7 @@ const InsertionSort: React.FC = () => {
             {(simPhase === 'idle' || isDone) && (
               <Button
                 type="primary" icon={<PlayCircleOutlined />}
-                onClick={handleSolve} disabled={elements.length < 2}
+                onClick={() => setShowOrderModal(true)} disabled={elements.length < 2}
                 style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
               >
                 {isDone ? 'Resolver de nuevo' : 'Resolver'}
@@ -745,7 +749,7 @@ const InsertionSort: React.FC = () => {
               </StatBadge>
               {isDone && (
                 <StatBadge style={{ color: '#16a34a' }}>
-                  ✅ ¡Ordenado completamente!
+                  ✅ ¡Ordenado {sortOrder === 'asc' ? 'ascendente' : 'descendente'}!
                 </StatBadge>
               )}
             </StatsRow>
@@ -847,6 +851,56 @@ const InsertionSort: React.FC = () => {
           </LegendRow>
         </CenterPanel>
       </MainArea>
+
+      <Modal
+        open={showOrderModal}
+        title={
+          <span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', fontSize: '1.1rem' }}>
+            ¿Cómo deseas ordenar?
+          </span>
+        }
+        onCancel={() => setShowOrderModal(false)}
+        footer={null}
+        centered
+        width={420}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '0.75rem 0 0.25rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            {(['asc', 'desc'] as SortOrder[]).map(order => (
+              <div
+                key={order}
+                onClick={() => setSortOrder(order)}
+                style={{
+                  flex: 1,
+                  border: `2px solid ${sortOrder === order ? '#2e186a' : '#e2e8f0'}`,
+                  borderRadius: 12,
+                  padding: '1.25rem 1rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: sortOrder === order ? '#f5f3ff' : 'white',
+                  transition: 'all 0.2s',
+                  boxShadow: sortOrder === order ? '0 4px 12px rgba(46,24,106,0.15)' : 'none',
+                }}
+              >
+                <div style={{ fontSize: '2.2rem' }}>{order === 'asc' ? '⬆️' : '⬇️'}</div>
+                <div style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', marginTop: 8, fontSize: '0.95rem' }}>
+                  {order === 'asc' ? 'Ascendente' : 'Descendente'}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 3 }}>
+                  {order === 'asc' ? 'menor → mayor' : 'mayor → menor'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="primary" size="large" icon={<PlayCircleOutlined />}
+            onClick={() => { setShowOrderModal(false); handleSolve(); }}
+            style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+          >
+            Comenzar
+          </Button>
+        </div>
+      </Modal>
     </Wrap>
   );
 };
