@@ -1,220 +1,553 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { Button, InputNumber, Slider, message } from 'antd';
+import { Button, InputNumber, Slider, message, Modal, Input } from 'antd';
 import {
-  PlayCircleOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  ExportOutlined,
-  ImportOutlined,
+  PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
+  DeleteOutlined, PlusOutlined, ExportOutlined, ImportOutlined,
 } from '@ant-design/icons';
 
-// ─── Types ─────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+type SortOrder = 'asc' | 'desc';
 type ElementState = 'default' | 'sorted' | 'dividing' | 'merging';
-type SimPhase = 'idle' | 'running' | 'done';
+type SimPhase = 'idle' | 'running' | 'paused' | 'done';
 
 interface SortElement {
   value: number;
   state: ElementState;
 }
 
-// ─── Animations ────────────────────────────────
-const pulse = keyframes`
-  0%,100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
+interface Pointers {
+  i: number | null;
+  j: number | null;
+  k: number | null;
+}
+
+// ─── Animations ──────────────────────────────────────────────────────────────
+const dividingPulse = keyframes`
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(124, 58, 237, 0); }
 `;
 
-const moveUp = keyframes`
-  from { transform: translateY(10px); opacity: 0.7; }
-  to { transform: translateY(0); opacity: 1; }
+const mergingPulse = keyframes`
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
 `;
 
-// ─── Styled ───────────────────────────────────
+const sortedGlow = keyframes`
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.65); }
+  60%  { box-shadow: 0 0 0 12px rgba(22, 163, 74, 0); }
+  100% { box-shadow: none; }
+`;
+
+const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+// ─── Styled Components ────────────────────────────────────────────────────────
 const Wrap = styled.div`
-  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 64px);
+  padding: 1.25rem 2rem 2rem;
+  gap: 1rem;
   background: #f8fafc;
 `;
 
-const Top = styled.div`
+const TopBar = styled.div`
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 1.5rem;
   flex-wrap: wrap;
+  background: white;
+  padding: 1rem 1.5rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.08);
+`;
+
+const PageTitle = styled.h2`
+  font-family: 'Motiva Sans Bold', serif;
+  color: #2e186a;
+  margin: 0;
+  font-size: 1.6rem;
+`;
+
+const MainArea = styled.div`
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  align-items: flex-start;
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+  }
+`;
+
+const ControlPanel = styled.div`
+  width: 264px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+
+  @media (max-width: 900px) {
+    width: 100%;
+  }
 `;
 
 const Card = styled.div`
-  margin-top: 10px;
   background: white;
-  padding: 12px;
-  border-radius: 10px;
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.08);
 `;
 
-const BarsContainer = styled.div`
+const CardTitle = styled.h4`
+  font-family: 'Motiva Sans Bold', serif;
+  color: #2e186a;
+  margin: 0 0 0.9rem 0;
+  font-size: 0.95rem;
+`;
+
+const FieldRow = styled.div`
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.65rem;
+`;
+
+const FieldLabel = styled.label`
+  font-size: 0.78rem;
+  color: #4a5568;
+  font-weight: 500;
+`;
+
+const CenterPanel = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+`;
+
+const SimBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  background: white;
+  padding: 0.85rem 1.25rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.08);
+`;
+
+const StatsRow = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  animation: ${fadeInUp} 0.3s ease;
+`;
+
+const StatBadge = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 0.55rem 1.1rem;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: #2e186a;
+  font-family: 'Motiva Sans Bold', serif;
+`;
+
+const CanvasCard = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.08);
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+`;
+
+const BarsContainer = styled.div<{ itemGap: number }>`
+  display: flex;
   align-items: flex-end;
   justify-content: center;
-  width: 100%;
+  gap: ${p => p.itemGap}px;
+  padding: 1.5rem 0.5rem 0;
+  min-height: 140px;
+  overflow: hidden;
+  flex-wrap: nowrap;
 `;
 
-// ─── Square (CON ANIMACIÓN REAL) ─────────────
-const Square = styled.div<{ state: ElementState; size: number }>`
-  width: ${p => p.size}px;
-  height: ${p => p.size}px;
+const BarColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+`;
+
+interface BarRectProps {
+  elementState: ElementState;
+  barColor: string;
+  squareSize: number;
+}
+
+const BarRect = styled.div<BarRectProps>`
+  width: ${p => p.squareSize}px;
+  min-width: ${p => p.squareSize}px;
+  height: ${p => p.squareSize}px;
+  background: ${p => p.barColor};
+  border-radius: 8px;
+  border: 2.5px solid ${p => {
+    switch (p.elementState) {
+      case 'sorted':   return '#16a34a';
+      case 'dividing': return '#7c3aed';
+      case 'merging':  return '#f59e0b';
+      default:         return 'rgba(0,0,0,0.08)';
+    }
+  }};
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'Motiva Sans Bold', serif;
+  font-size: ${p => p.squareSize < 14 ? '0' : p.squareSize < 36 ? '0.62rem' : p.squareSize < 52 ? '0.72rem' : '0.88rem'};
   color: white;
-  border-radius: 10px;
-  font-weight: bold;
-  transition: all 0.3s ease;
-  animation: ${moveUp} 0.3s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition:
+    width        0.28s ease,
+    height       0.28s ease,
+    background   0.35s ease,
+    border-color 0.30s ease,
+    box-shadow   0.30s ease;
+  cursor: default;
+  user-select: none;
+  will-change: transform, box-shadow;
+  transform: translate3d(0, 0, 0);
 
-  background: ${p =>
-    p.state === 'sorted' ? '#16a34a' :
-    p.state === 'dividing' ? '#7c3aed' :
-    p.state === 'merging' ? '#f59e0b' :
-    '#3b82f6'};
-
-  ${p => (p.state === 'dividing' || p.state === 'merging') && css`
-    animation: ${pulse} 0.5s ease;
-  `}
+  ${p => p.elementState === 'dividing' && css`animation: ${dividingPulse} 0.9s ease infinite;`}
+  ${p => p.elementState === 'merging'  && css`animation: ${mergingPulse} 0.8s ease infinite;`}
+  ${p => p.elementState === 'sorted'   && css`animation: ${sortedGlow} 0.6s ease forwards;`}
 `;
 
-const Stats = styled.div`
-  margin-top: 15px;
+const PointerLabel = styled.div`
+  margin-top: 5px;
+  height: 18px;
   display: flex;
-  gap: 15px;
-  font-weight: bold;
-  color: #2e186a;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: 'Motiva Sans Bold', serif;
 `;
 
-// ─── Helpers ──────────────────────────────────
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const LegendRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: white;
+  padding: 0.65rem 1.25rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(46, 24, 106, 0.06);
+`;
 
-const makeElements = (arr: number[]): SortElement[] =>
-  arr.map(v => ({ value: v, state: 'default' }));
+interface LegendDotProps {
+  dotColor: string;
+  borderColor?: string;
+}
 
-// ─── Component ────────────────────────────────
-const MergeSort: React.FC = () => {
-  const [elements, setElements] = useState<SortElement[]>(
-    makeElements([5, 3, 8, 2, 1])
+const LegendDot = styled.div<LegendDotProps>`
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: ${p => p.dotColor};
+  border: 2px solid ${p => p.borderColor || p.dotColor};
+  flex-shrink: 0;
+`;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+function calcGap(count: number): number {
+  if (count <= 20) return 6;
+  if (count <= 40) return 4;
+  if (count <= 60) return 3;
+  if (count <= 80) return 2;
+  return 1;
+}
+
+function calcSquareSize(
+  containerWidth: number,
+  count: number,
+  value: number,
+  minVal: number,
+  maxVal: number,
+): number {
+  const gap = calcGap(count);
+  const padding = 32;
+  const available = Math.max(160, containerWidth - padding);
+  const fitSize = Math.floor((available - gap * Math.max(count - 1, 0)) / Math.max(count, 1));
+  const MAX_S = Math.min(110, Math.max(6, fitSize));
+  const MIN_S = Math.max(4, Math.floor(MAX_S * 0.45));
+  if (maxVal === minVal) return Math.round((MAX_S + MIN_S) / 2);
+  const pct = (value - minVal) / (maxVal - minVal);
+  return Math.round(MIN_S + pct * (MAX_S - MIN_S));
+}
+
+function calcBarColor(value: number, minVal: number, maxVal: number): string {
+  const range = maxVal === minVal ? 1 : maxVal - minVal;
+  const pct = (value - minVal) / range;
+  const hue = Math.round(240 - pct * 200);
+  return `hsl(${hue}, 65%, 52%)`;
+}
+
+function makeElements(values: number[]): SortElement[] {
+  return values.map(v => ({ value: v, state: 'default' as ElementState }));
+}
+
+function randomArray(count: number, min: number, max: number): SortElement[] {
+  return makeElements(
+    Array.from({ length: count }, () => Math.floor(Math.random() * (max - min + 1)) + min)
   );
+}
 
-  const [speed, setSpeed] = useState(500);
-  const [input, setInput] = useState<number | null>(null);
+// ─── Component ───────────────────────────────────────────────────────────────
+const MergeSort: React.FC = () => {
+  const [elements, setElements]     = useState<SortElement[]>(() => randomArray(10, 1, 100));
+  const [simPhase, setSimPhase]     = useState<SimPhase>('idle');
   const [comparisons, setComparisons] = useState(0);
-  const [moves, setMoves] = useState(0);
+  const [moves, setMoves]           = useState(0);
+  const [pointers, setPointers]     = useState<Pointers>({ i: null, j: null, k: null });
 
-  const [pointers, setPointers] = useState<{
-    i: number | null;
-    j: number | null;
-    k: number | null;
-  }>({ i: null, j: null, k: null });
+  const [sortOrder, setSortOrder]   = useState<SortOrder>('asc');
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [randCount, setRandCount]   = useState(10);
+  const [randMin, setRandMin]       = useState(1);
+  const [randMax, setRandMax]       = useState(100);
+  const [manualVal, setManualVal]   = useState<number | null>(null);
+  const [simSpeed, setSimSpeed]     = useState(500);
+  const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+  const [exportFileName, setExportFileName] = useState('merge-sort-data');
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const isPausedRef  = useRef(false);
+  const stopRef      = useRef(false);
+  const speedRef     = useRef(500);
+  const canvasRef    = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [containerWidth, setContainerWidth] = useState(700);
 
-  // ─── IMPORT / EXPORT ─────────────────────────
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      setContainerWidth(entries[0].contentRect.width - 48);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target?.result as string);
-        setElements(makeElements(data));
-        setComparisons(0);
-        setMoves(0);
-      } catch {
-        message.error('JSON inválido');
-      }
-    };
-    reader.readAsText(file);
-  };
+  const allValues = elements.map(e => e.value);
+  const minVal = allValues.length > 0 ? Math.min(...allValues) : 0;
+  const maxVal = allValues.length > 0 ? Math.max(...allValues) : 100;
 
-  const handleExport = () => {
-    const data = elements.map(e => e.value);
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'merge.json';
-    a.click();
-  };
-
-  // ─── RANDOM ─────────────────────────────────
-  const handleRandom = () => {
-    const arr = Array.from({ length: 10 }, () =>
-      Math.floor(Math.random() * 100) + 1
-    );
-    setElements(makeElements(arr));
+  // ── Controls ────────────────────────────────────────────────────────────────
+  const handleGenerate = useCallback(() => {
+    if (simPhase === 'running') return;
+    if (randMin >= randMax) { message.error('El límite inferior debe ser menor que el superior'); return; }
+    stopRef.current = true;
+    const count = Math.max(Math.round(randCount), 2);
+    setElements(randomArray(count, randMin, randMax));
+    setSimPhase('idle');
     setComparisons(0);
     setMoves(0);
-  };
+    setPointers({ i: null, j: null, k: null });
+  }, [simPhase, randCount, randMin, randMax]);
 
-  // ─── SIZE ────────────────────────────────────
-  const values = elements.map(e => e.value);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
+  const handleAddManual = useCallback(() => {
+    if (simPhase === 'running' || manualVal === null) return;
+    setElements(prev => [...prev, { value: manualVal, state: 'default' }]);
+    setManualVal(null);
+  }, [simPhase, manualVal]);
 
-  const getSize = (v: number) => {
-    if (maxVal === minVal) return 50;
-    return 30 + ((v - minVal) / (maxVal - minVal)) * 60;
-  };
+  const handleDeleteLast = useCallback(() => {
+    if (simPhase === 'running') return;
+    stopRef.current = true;
+    setElements(prev => prev.slice(0, -1));
+    setSimPhase('idle');
+  }, [simPhase]);
 
-  // ─── MERGE SORT ─────────────────────────────
+  const handleClear = useCallback(() => {
+    if (simPhase === 'running') return;
+    stopRef.current = true;
+    setElements([]);
+    setSimPhase('idle');
+    setComparisons(0);
+    setMoves(0);
+    setPointers({ i: null, j: null, k: null });
+  }, [simPhase]);
+
+  const handleReset = useCallback(() => {
+    stopRef.current = true;
+    isPausedRef.current = false;
+    setSimPhase('idle');
+    setComparisons(0);
+    setMoves(0);
+    setPointers({ i: null, j: null, k: null });
+    setElements(prev => prev.map(e => ({ ...e, state: 'default' })));
+  }, []);
+
+  const handlePause = useCallback(() => {
+    isPausedRef.current = true;
+    setSimPhase('paused');
+  }, []);
+
+  const handleResume = useCallback(() => {
+    isPausedRef.current = false;
+    setSimPhase('running');
+  }, []);
+
+  const handleSpeedChange = useCallback((val: number) => {
+    setSimSpeed(val);
+    speedRef.current = val;
+  }, []);
+
+  const handleExportJSON = useCallback(() => {
+    setIsExportModalVisible(true);
+  }, []);
+
+  const confirmExport = useCallback(() => {
+    const values = elements.map(e => e.value);
+    const dataStr = JSON.stringify(values, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${exportFileName || 'data'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    message.success('Archivo exportado correctamente');
+    setIsExportModalVisible(false);
+  }, [elements, exportFileName]);
+
+  const handleImportJSON = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        if (!Array.isArray(parsed)) throw new Error('El archivo debe contener un arreglo de números');
+        const numericArray = parsed.map(v => {
+          const num = Number(v);
+          if (isNaN(num)) throw new Error('Todos los elementos deben ser números');
+          return num;
+        });
+        stopRef.current = true;
+        setElements(makeElements(numericArray));
+        setSimPhase('idle');
+        setComparisons(0);
+        setMoves(0);
+        setPointers({ i: null, j: null, k: null });
+        message.success('Archivo importado correctamente');
+      } catch (err: any) {
+        message.error(`Error al importar: ${err.message}`);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  }, []);
+
+  // ── Solver ──────────────────────────────────────────────────────────────────
   const handleSolve = useCallback(async () => {
-    let arr = elements.map(e => e.value);
+    if (elements.length < 2) { message.info('Agrega al menos 2 elementos'); return; }
+
+    stopRef.current = false;
+    isPausedRef.current = false;
+    setSimPhase('running');
+    setComparisons(0);
+    setMoves(0);
+    setPointers({ i: null, j: null, k: null });
+
+    const arr = elements.map(e => e.value);
+    const isAsc = sortOrder === 'asc';
+    let comps = 0;
+    let movesCount = 0;
 
     const merge = async (l: number, m: number, r: number) => {
-      let left = arr.slice(l, m + 1);
-      let right = arr.slice(m + 1, r + 1);
-
+      const left  = arr.slice(l, m + 1);
+      const right = arr.slice(m + 1, r + 1);
       let i = 0, j = 0, k = l;
 
       while (i < left.length && j < right.length) {
-        setComparisons(c => c + 1);
+        while (isPausedRef.current && !stopRef.current) await sleep(50);
+        if (stopRef.current) return;
+
+        comps++;
+        setComparisons(comps);
         setPointers({ i: l + i, j: m + 1 + j, k });
 
         setElements(arr.map((v, idx) => ({
           value: v,
-          state: idx >= l && idx <= r ? 'merging' : 'default'
+          state: idx >= l && idx <= r ? 'merging' : 'default',
         })));
 
-        await sleep(speed);
+        await sleep(speedRef.current);
 
-        if (left[i] <= right[j]) arr[k++] = left[i++];
-        else arr[k++] = right[j++];
+        const takeLeft = isAsc ? left[i] <= right[j] : left[i] >= right[j];
+        if (takeLeft) arr[k++] = left[i++];
+        else          arr[k++] = right[j++];
 
-        setMoves(m => m + 1);
+        movesCount++;
+        setMoves(movesCount);
       }
 
       while (i < left.length) {
+        while (isPausedRef.current && !stopRef.current) await sleep(50);
+        if (stopRef.current) return;
         setPointers({ i: l + i, j: null, k });
         arr[k++] = left[i++];
-        setMoves(m => m + 1);
-        await sleep(speed);
+        movesCount++;
+        setMoves(movesCount);
+        setElements(arr.map((v, idx) => ({
+          value: v,
+          state: idx >= l && idx <= r ? 'merging' : 'default',
+        })));
+        await sleep(speedRef.current * 0.6);
       }
 
       while (j < right.length) {
+        while (isPausedRef.current && !stopRef.current) await sleep(50);
+        if (stopRef.current) return;
         setPointers({ i: null, j: m + 1 + j, k });
         arr[k++] = right[j++];
-        setMoves(m => m + 1);
-        await sleep(speed);
+        movesCount++;
+        setMoves(movesCount);
+        setElements(arr.map((v, idx) => ({
+          value: v,
+          state: idx >= l && idx <= r ? 'merging' : 'default',
+        })));
+        await sleep(speedRef.current * 0.6);
       }
     };
 
     const mergeSort = async (l: number, r: number) => {
-      if (l >= r) return;
-
+      if (l >= r || stopRef.current) return;
       const m = Math.floor((l + r) / 2);
 
       setElements(arr.map((v, idx) => ({
         value: v,
-        state: idx >= l && idx <= r ? 'dividing' : 'default'
+        state: idx >= l && idx <= r ? 'dividing' : 'default',
       })));
 
-      await sleep(speed);
+      await sleep(speedRef.current * 0.7);
+      if (stopRef.current) return;
 
       await mergeSort(l, m);
       await mergeSort(m + 1, r);
@@ -223,87 +556,399 @@ const MergeSort: React.FC = () => {
 
     await mergeSort(0, arr.length - 1);
 
-    setElements(arr.map(v => ({ value: v, state: 'sorted' })));
-    setPointers({ i: null, j: null, k: null });
+    if (!stopRef.current) {
+      setElements(arr.map(v => ({ value: v, state: 'sorted' })));
+      setPointers({ i: null, j: null, k: null });
+      setSimPhase('done');
+    }
+  }, [elements, sortOrder]);
 
-  }, [elements, speed]);
+  // ── Render ──────────────────────────────────────────────────────────────────
+  const isRunning = simPhase === 'running';
+  const isPaused  = simPhase === 'paused';
+  const isDone    = simPhase === 'done';
 
-  // ─── CONTROLES ─────────────────────────────
-  const handleAdd = () => {
-    if (input === null) return;
-    setElements(prev => [...prev, { value: input, state: 'default' }]);
-    setInput(null);
-  };
-
-  const handleClear = () => setElements([]);
-
-  // ─── UI ─────────────────────────────────────
   return (
     <Wrap>
-      <h2>Merge Sort</h2>
-
-      {/* INSTRUCCIONES */}
-      <Card>
-        <b>📌 Instrucciones</b>
-        <p style={{ fontSize: 13, lineHeight: 1.6 }}>
-          👉 Agrega números o usa Aleatorio<br />
-          👉 Ejecutar inicia el algoritmo<br />
-          👉 Velocidad controla animación<br />
-          👉 Importar / Exportar maneja JSON<br />
-          👉 Punteros ⬇ muestran i, j, k en tiempo real
-        </p>
-      </Card>
-
-      <Top>
-        <InputNumber value={input} onChange={setInput} />
-        <Button icon={<PlusOutlined />} onClick={handleAdd}>Agregar</Button>
-        <Button onClick={handleRandom}>Aleatorio</Button>
-        <Button icon={<DeleteOutlined />} onClick={handleClear}>Limpiar</Button>
-      </Top>
-
-      <Top style={{ marginTop: 10 }}>
-        <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleSolve}>
-          Ejecutar
-        </Button>
-
-        <Button icon={<ExportOutlined />} onClick={handleExport}>Exportar</Button>
-        <Button icon={<ImportOutlined />} onClick={() => fileRef.current?.click()}>
-          Importar
-        </Button>
-
-        <input type="file" ref={fileRef} hidden onChange={handleImport} />
-      </Top>
-
-      <div style={{ marginTop: 10 }}>
-        Velocidad:
-        <Slider min={100} max={1000} value={speed} onChange={setSpeed} />
-      </div>
-
-      <Stats>
-        <div>🔍 Comparaciones: {comparisons}</div>
-        <div>🔄 Movimientos: {moves}</div>
-      </Stats>
-
-      {/* VISUAL + PUNTEROS */}
-      <BarsContainer>
-        {elements.map((el, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ height: 18 }}>{pointers.i === i && '⬇ i'}{pointers.j === i && '⬇ j'}{pointers.k === i && '⬇ k'}</div>
-
-            <Square state={el.state} size={getSize(el.value)}>
-              {el.value}
-            </Square>
+      {/* ── Page header ── */}
+      <TopBar>
+        <div>
+          <PageTitle>Merge Sort</PageTitle>
+          <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
+            Algoritmo de ordenamiento por mezcla
           </div>
-        ))}
-      </BarsContainer>
+        </div>
+      </TopBar>
 
-      {/* LEYENDA REAL */}
-      <Card>
-        <b>Leyenda</b>
-        <p>
-          🔵 Default | 🟣 Dividing | 🟠 Merging | 🟢 Sorted
-        </p>
-      </Card>
+      <MainArea>
+        {/* ── Left: controls ── */}
+        <ControlPanel>
+          {/* Random generation */}
+          <Card>
+            <CardTitle>🎲 Generación Aleatoria</CardTitle>
+            <FieldRow>
+              <FieldLabel>Cantidad de elementos</FieldLabel>
+              <InputNumber
+                min={2} value={randCount}
+                onChange={v => setRandCount(v ?? 10)}
+                style={{ width: '100%', borderRadius: 8 }}
+                disabled={isRunning}
+              />
+            </FieldRow>
+            <FieldRow>
+              <FieldLabel>Límite inferior</FieldLabel>
+              <InputNumber
+                value={randMin}
+                onChange={v => setRandMin(v ?? 1)}
+                style={{ width: '100%', borderRadius: 8 }}
+                disabled={isRunning}
+              />
+            </FieldRow>
+            <FieldRow>
+              <FieldLabel>Límite superior</FieldLabel>
+              <InputNumber
+                value={randMax}
+                onChange={v => setRandMax(v ?? 100)}
+                style={{ width: '100%', borderRadius: 8 }}
+                disabled={isRunning}
+              />
+            </FieldRow>
+            <Button
+              type="primary" block onClick={handleGenerate} disabled={isRunning}
+              style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+            >
+              🎲 Generar Aleatorio
+            </Button>
+          </Card>
+
+          {/* Manual input */}
+          <Card>
+            <CardTitle>✏️ Entrada Manual</CardTitle>
+            <FieldRow>
+              <FieldLabel>Agregar número</FieldLabel>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <InputNumber
+                  value={manualVal}
+                  onChange={v => setManualVal(v ?? null)}
+                  onPressEnter={handleAddManual}
+                  style={{ flex: 1, borderRadius: 8 }}
+                  disabled={isRunning}
+                  placeholder="Número"
+                />
+                <Button
+                  icon={<PlusOutlined />} onClick={handleAddManual}
+                  disabled={manualVal === null || isRunning}
+                  style={{ borderRadius: 8 }}
+                />
+              </div>
+            </FieldRow>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Button
+                icon={<DeleteOutlined />} onClick={handleDeleteLast}
+                disabled={isRunning || elements.length === 0}
+                style={{ flex: 1, borderRadius: 8, fontSize: '0.8rem' }}
+              >
+                Borrar último
+              </Button>
+              <Button
+                danger icon={<DeleteOutlined />} onClick={handleClear}
+                disabled={isRunning || elements.length === 0}
+                style={{ flex: 1, borderRadius: 8, fontSize: '0.8rem' }}
+              >
+                Limpiar
+              </Button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#9ca3af', textAlign: 'right' }}>
+              {elements.length} elementos
+            </div>
+          </Card>
+
+          {/* Info */}
+          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
+            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
+            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
+              Merge Sort <strong>divide</strong> el arreglo recursivamente en mitades hasta tener subarreglos
+              de 1 elemento, luego los <strong>mezcla</strong> ordenadamente. Los punteros{' '}
+              <strong style={{ color: '#7c3aed' }}>i</strong>,{' '}
+              <strong style={{ color: '#f59e0b' }}>j</strong> y{' '}
+              <strong style={{ color: '#3b82f6' }}>k</strong> muestran las posiciones de comparación
+              y escritura en tiempo real.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
+              <strong>Complejidad:</strong> O(n log n) tiempo · O(n) espacio
+            </p>
+          </Card>
+        </ControlPanel>
+
+        {/* ── Center: canvas ── */}
+        <CenterPanel>
+          {/* Simulation controls */}
+          <SimBar>
+            {(simPhase === 'idle' || isDone) && (
+              <Button
+                type="primary" icon={<PlayCircleOutlined />}
+                onClick={() => setShowOrderModal(true)} disabled={elements.length < 2}
+                style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+              >
+                {isDone ? 'Resolver de nuevo' : 'Resolver'}
+              </Button>
+            )}
+            {isRunning && (
+              <Button
+                icon={<PauseCircleOutlined />} onClick={handlePause}
+                style={{ borderRadius: 8 }}
+              >
+                Pausar
+              </Button>
+            )}
+            {isPaused && (
+              <Button
+                type="primary" icon={<PlayCircleOutlined />} onClick={handleResume}
+                style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+              >
+                Continuar
+              </Button>
+            )}
+            <Button
+              icon={<ReloadOutlined />} onClick={handleReset} disabled={isRunning}
+              style={{ borderRadius: 8 }}
+            >
+              Reiniciar
+            </Button>
+            <Button
+              icon={<ExportOutlined />} onClick={handleExportJSON}
+              style={{ borderRadius: 8 }}
+            >
+              Exportar JSON
+            </Button>
+            <Button
+              icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}
+              disabled={isRunning}
+              style={{ borderRadius: 8 }}
+            >
+              Importar JSON
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              accept=".json"
+              onChange={handleImportJSON}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+              <span style={{ fontSize: '0.82rem', color: '#4a5568', whiteSpace: 'nowrap' }}>
+                Velocidad:
+              </span>
+              <Slider
+                min={100} max={1500} value={simSpeed}
+                onChange={handleSpeedChange}
+                reverse
+                style={{ width: 130 }}
+                tooltip={{ formatter: v => `${v}ms` }}
+              />
+            </div>
+          </SimBar>
+
+          {/* Stats */}
+          {(isRunning || isPaused || isDone) && (
+            <StatsRow>
+              <StatBadge>
+                🔍 Comparaciones: <strong style={{ marginLeft: 4 }}>{comparisons}</strong>
+              </StatBadge>
+              <StatBadge style={{ color: '#7c3aed' }}>
+                🔄 Movimientos: <strong style={{ marginLeft: 4 }}>{moves}</strong>
+              </StatBadge>
+              {isDone && (
+                <StatBadge style={{ color: '#16a34a' }}>
+                  ✅ ¡Ordenado {sortOrder === 'asc' ? 'ascendente' : 'descendente'}!
+                </StatBadge>
+              )}
+            </StatsRow>
+          )}
+
+          {/* Canvas */}
+          <CanvasCard ref={canvasRef}>
+            <div style={{
+              fontFamily: "'Motiva Sans Bold', serif",
+              color: '#2e186a',
+              marginBottom: '0.5rem',
+              fontSize: '0.95rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <span>Pizarra de Visualización</span>
+              {isDone && (
+                <span style={{ fontSize: '0.82rem', color: '#16a34a' }}>
+                  ✅ Ordenamiento completado
+                </span>
+              )}
+              {(isRunning || isPaused) && (
+                <span style={{ fontSize: '0.8rem', color: '#7c3aed', fontFamily: "'Motiva Sans Light', serif" }}>
+                  {isPaused ? '⏸ Pausado' : '▶ Ejecutando…'}
+                </span>
+              )}
+            </div>
+
+            {elements.length === 0 ? (
+              <div style={{
+                color: '#9ca3af',
+                textAlign: 'center',
+                padding: '4rem 1rem',
+                fontFamily: "'Motiva Sans Light', serif",
+                fontSize: '0.95rem',
+              }}>
+                Genera elementos aleatorios o agrégalos manualmente para comenzar
+              </div>
+            ) : (
+              <BarsContainer itemGap={calcGap(elements.length)}>
+                {elements.map((el, i) => {
+                  const size  = calcSquareSize(containerWidth, elements.length, el.value, minVal, maxVal);
+                  const color = el.state === 'sorted'   ? '#16a34a'
+                              : el.state === 'merging'  ? '#f59e0b'
+                              : el.state === 'dividing' ? '#7c3aed'
+                              : calcBarColor(el.value, minVal, maxVal);
+
+                  const hasI = pointers.i === i;
+                  const hasJ = pointers.j === i;
+                  const hasK = pointers.k === i;
+                  const showPointer = hasI || hasJ || hasK;
+
+                  return (
+                    <BarColumn key={`pos-${i}`}>
+                      <BarRect
+                        elementState={el.state}
+                        barColor={color}
+                        squareSize={size}
+                      >
+                        {el.value}
+                      </BarRect>
+                      {size >= 16 && (
+                        <PointerLabel style={{ opacity: showPointer ? 1 : 0 }}>
+                          {hasI && <span style={{ color: '#7c3aed' }}>i</span>}
+                          {hasJ && <span style={{ color: '#f59e0b' }}>j</span>}
+                          {hasK && <span style={{ color: '#3b82f6' }}>k</span>}
+                        </PointerLabel>
+                      )}
+                    </BarColumn>
+                  );
+                })}
+              </BarsContainer>
+            )}
+          </CanvasCard>
+
+          {/* Legend */}
+          <LegendRow>
+            <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>Leyenda:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
+              <LegendDot dotColor="hsl(200, 65%, 52%)" />
+              Sin ordenar
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
+              <LegendDot dotColor="hsl(200, 65%, 52%)" borderColor="#7c3aed" />
+              Dividiendo
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
+              <LegendDot dotColor="#f59e0b" />
+              Mezclando
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#4a5568' }}>
+              <LegendDot dotColor="#16a34a" />
+              Ordenado ✓
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#7c3aed' }}>
+              <strong>i</strong> izq · <strong style={{ color: '#f59e0b' }}>j</strong> der · <strong style={{ color: '#3b82f6' }}>k</strong> escritura
+            </div>
+          </LegendRow>
+        </CenterPanel>
+      </MainArea>
+
+      {/* Sort order modal */}
+      <Modal
+        open={showOrderModal}
+        title={
+          <span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', fontSize: '1.1rem' }}>
+            ¿Cómo deseas ordenar?
+          </span>
+        }
+        onCancel={() => setShowOrderModal(false)}
+        footer={null}
+        centered
+        width={420}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '0.75rem 0 0.25rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            {(['asc', 'desc'] as SortOrder[]).map(order => (
+              <div
+                key={order}
+                onClick={() => setSortOrder(order)}
+                style={{
+                  flex: 1,
+                  border: `2px solid ${sortOrder === order ? '#2e186a' : '#e2e8f0'}`,
+                  borderRadius: 12,
+                  padding: '1.25rem 1rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: sortOrder === order ? '#f5f3ff' : 'white',
+                  transition: 'all 0.2s',
+                  boxShadow: sortOrder === order ? '0 4px 12px rgba(46,24,106,0.15)' : 'none',
+                }}
+              >
+                <div style={{ fontSize: '2.2rem' }}>{order === 'asc' ? '⬆️' : '⬇️'}</div>
+                <div style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', marginTop: 8, fontSize: '0.95rem' }}>
+                  {order === 'asc' ? 'Ascendente' : 'Descendente'}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 3 }}>
+                  {order === 'asc' ? 'menor → mayor' : 'mayor → menor'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="primary" size="large" icon={<PlayCircleOutlined />}
+            onClick={() => { setShowOrderModal(false); handleSolve(); }}
+            style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+          >
+            Comenzar
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Export modal */}
+      <Modal
+        open={isExportModalVisible}
+        title={<span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a' }}>Exportar datos</span>}
+        onCancel={() => setIsExportModalVisible(false)}
+        footer={null}
+        centered
+        width={360}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', color: '#4a5568' }}>Nombre del archivo</label>
+            <Input
+              value={exportFileName}
+              onChange={e => setExportFileName(e.target.value)}
+              placeholder="Ej: datos-ordenados"
+              addonAfter=".json"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <Button onClick={() => setIsExportModalVisible(false)} style={{ borderRadius: 8 }}>
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              onClick={confirmExport}
+              disabled={!exportFileName.trim()}
+              style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+            >
+              Exportar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Wrap>
   );
 };

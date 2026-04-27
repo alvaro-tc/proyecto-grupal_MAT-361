@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { message, Modal as AntModal } from "antd";
+import { message, Modal as AntModal, Input, Button } from "antd";
 import {
   DownloadOutlined,
   UploadOutlined,
@@ -268,6 +268,10 @@ export default function BinaryTree() {
   const [rndMin, setRndMin] = useState(1);
   const [rndMax, setRndMax] = useState(99);
 
+  // Export modal
+  const [exportModal, setExportModal] = useState(false);
+  const [exportFileName, setExportFileName] = useState('arbol-binario');
+
   // Import ref
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -436,9 +440,13 @@ export default function BinaryTree() {
 
   const exportJSON = () => {
     if (!root) { message.info("No hay árbol para exportar"); return; }
+    setExportModal(true);
+  };
+
+  const confirmExport = () => {
+    if (!root) return;
     const nodes = collectNodes(root);
-    const values = [];
-    // Export values in insertion order = preorder keeps BST reconstructable
+    const values: number[] = [];
     const seq: string[] = [];
     preorder(root, seq);
     for (const id of seq) {
@@ -450,10 +458,11 @@ export default function BinaryTree() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "arbol-binario.json";
+    a.download = `${exportFileName.trim() || 'arbol-binario'}.json`;
     a.click();
     URL.revokeObjectURL(url);
     message.success("Árbol exportado correctamente");
+    setExportModal(false);
   };
 
   const importJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -967,6 +976,43 @@ export default function BinaryTree() {
           </ModalCard>
         </ModalOverlay>
       )}
+
+      {/* ── Export Modal ────────────────────────────────────────────────────── */}
+      <AntModal
+        open={exportModal}
+        title={<span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a' }}>Exportar árbol</span>}
+        onCancel={() => setExportModal(false)}
+        footer={null}
+        centered
+        width={360}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', color: '#4a5568' }}>Nombre del archivo</label>
+            <Input
+              value={exportFileName}
+              onChange={e => setExportFileName(e.target.value)}
+              onPressEnter={confirmExport}
+              placeholder="Ej: mi-arbol"
+              addonAfter=".json"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <Button onClick={() => setExportModal(false)} style={{ borderRadius: 8 }}>
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              onClick={confirmExport}
+              disabled={!exportFileName.trim()}
+              style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+            >
+              Exportar
+            </Button>
+          </div>
+        </div>
+      </AntModal>
     </PageContainer>
   );
 }

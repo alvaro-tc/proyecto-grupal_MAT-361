@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { Button, Input, InputNumber, Slider, Radio, message } from 'antd';
+import { Button, Input, InputNumber, Slider, Radio, message, Modal } from 'antd';
 import {
   PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
   DeleteOutlined, PlusOutlined, ExportOutlined, ImportOutlined,
@@ -183,11 +183,11 @@ const CanvasCard = styled.div`
   min-height: 300px;
 `;
 
-const BarsContainer = styled.div`
+const BarsContainer = styled.div<{ itemGap: number }>`
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 7px;
+  gap: ${p => p.itemGap}px;
   padding: 1.5rem 0.5rem 0;
   min-height: 140px;
   overflow: hidden;
@@ -227,7 +227,7 @@ const BarRect = styled.div<BarRectProps>`
   align-items: center;
   justify-content: center;
   font-family: 'Motiva Sans Bold', serif;
-  font-size: ${p => p.squareSize < 36 ? '0.62rem' : p.squareSize < 52 ? '0.72rem' : '0.88rem'};
+  font-size: ${p => p.squareSize < 14 ? '0' : p.squareSize < 36 ? '0.62rem' : p.squareSize < 52 ? '0.72rem' : '0.88rem'};
   color: white;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   transition:
@@ -289,7 +289,15 @@ const LegendDot = styled.div<LegendDotProps>`
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-const MAX_ELEMS = 20;
+const MAX_ELEMS = 100;
+
+function calcGap(count: number): number {
+  if (count <= 20) return 6;
+  if (count <= 40) return 4;
+  if (count <= 60) return 3;
+  if (count <= 80) return 2;
+  return 1;
+}
 
 function calcSquareSize(
   containerWidth: number,
@@ -298,12 +306,12 @@ function calcSquareSize(
   minVal: number,
   maxVal: number,
 ): number {
-  const gap = 7;
+  const gap = calcGap(count);
   const padding = 32;
   const available = Math.max(160, containerWidth - padding);
   const fitSize = Math.floor((available - gap * Math.max(count - 1, 0)) / Math.max(count, 1));
-  const MAX_S = Math.min(110, Math.max(32, fitSize));
-  const MIN_S = Math.max(24, Math.floor(MAX_S * 0.45));
+  const MAX_S = Math.min(110, Math.max(6, fitSize));
+  const MIN_S = Math.max(4, Math.floor(MAX_S * 0.45));
   if (maxVal === minVal) return Math.round((MAX_S + MIN_S) / 2);
   const pct = (value - minVal) / (maxVal - minVal);
   return Math.round(MIN_S + pct * (MAX_S - MIN_S));
@@ -339,6 +347,8 @@ const ShellSort: React.FC = () => {
   const [manualText, setManualText] = useState('');
   const [simSpeed, setSimSpeed]   = useState(500);
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+  const [exportFileName, setExportFileName] = useState('shell-sort-data');
 
   const isPausedRef      = useRef(false);
   const stopRef          = useRef(false);
@@ -446,26 +456,24 @@ const ShellSort: React.FC = () => {
   }, []);
 
   const handleExportJSON = useCallback(() => {
+    setIsExportModalVisible(true);
+  }, []);
+
+  const confirmExport = useCallback(() => {
     const values = elements.map(e => e.value);
-    const rawName = window.prompt('Nombre del archivo', 'shell-sort-data');
-
-    if (rawName === null) return;
-
-    const cleanName = rawName.trim().replace(/[\\/:*?"<>|]+/g, '_');
-    const finalName = cleanName === '' ? 'shell-sort-data' : cleanName;
-
     const dataStr = JSON.stringify(values, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${finalName}.json`;
+    link.download = `${exportFileName || 'shell-sort-data'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    message.success(`Archivo exportado como ${finalName}.json`);
-  }, [elements]);
+    message.success('Archivo exportado correctamente');
+    setIsExportModalVisible(false);
+  }, [elements, exportFileName]);
 
   const handleImportJSON = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -858,7 +866,7 @@ const ShellSort: React.FC = () => {
                 Genera elementos aleatorios o carga un arreglo manual separado por comas
               </div>
             ) : (
-              <BarsContainer>
+              <BarsContainer itemGap={calcGap(elements.length)}>
                 {elements.map((el, i) => {
                   const size  = calcSquareSize(containerWidth, elements.length, el.value, minVal, maxVal);
                   const color = el.state === 'sorted'   ? '#16a34a'
@@ -879,11 +887,13 @@ const ShellSort: React.FC = () => {
                       >
                         {el.value}
                       </BarRect>
-                      <TriangleUp
-                        visible={showTriangle}
-                        triColor={showTriangle ? triColor : '#dc2626'}
-                        entering={showTriangle}
-                      />
+                      {size >= 16 && (
+                        <TriangleUp
+                          visible={showTriangle}
+                          triColor={showTriangle ? triColor : '#dc2626'}
+                          entering={showTriangle}
+                        />
+                      )}
                     </BarColumn>
                   );
                 })}
@@ -920,6 +930,41 @@ const ShellSort: React.FC = () => {
           </LegendRow>
         </CenterPanel>
       </MainArea>
+
+      <Modal
+        open={isExportModalVisible}
+        title={<span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a' }}>Exportar datos</span>}
+        onCancel={() => setIsExportModalVisible(false)}
+        footer={null}
+        centered
+        width={360}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingTop: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', color: '#4a5568' }}>Nombre del archivo</label>
+            <Input
+              value={exportFileName}
+              onChange={e => setExportFileName(e.target.value)}
+              placeholder="Ej: datos-ordenados"
+              addonAfter=".json"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <Button onClick={() => setIsExportModalVisible(false)} style={{ borderRadius: 8 }}>
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              onClick={confirmExport}
+              disabled={!exportFileName.trim()}
+              style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+            >
+              Exportar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Wrap>
   );
 };
