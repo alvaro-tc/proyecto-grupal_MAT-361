@@ -663,21 +663,7 @@ const MergeSort: React.FC = () => {
             </div>
           </Card>
 
-          {/* Info */}
-          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
-            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
-            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
-              Merge Sort <strong>divide</strong> el arreglo recursivamente en mitades hasta tener subarreglos
-              de 1 elemento, luego los <strong>mezcla</strong> ordenadamente. Los punteros{' '}
-              <strong style={{ color: '#7c3aed' }}>i</strong>,{' '}
-              <strong style={{ color: '#f59e0b' }}>j</strong> y{' '}
-              <strong style={{ color: '#3b82f6' }}>k</strong> muestran las posiciones de comparación
-              y escritura en tiempo real.
-            </p>
-            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
-              <strong>Complejidad:</strong> O(n log n) tiempo · O(n) espacio
-            </p>
-          </Card>
+
         </ControlPanel>
 
         {/* ── Center: canvas ── */}
@@ -860,6 +846,21 @@ const MergeSort: React.FC = () => {
               <strong>i</strong> izq · <strong style={{ color: '#f59e0b' }}>j</strong> der · <strong style={{ color: '#3b82f6' }}>k</strong> escritura
             </div>
           </LegendRow>
+
+          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe', marginTop: 'auto' }}>
+            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
+            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
+              Merge Sort <strong>divide</strong> el arreglo recursivamente en mitades hasta tener subarreglos
+              de 1 elemento, luego los <strong>mezcla</strong> ordenadamente. Los punteros{' '}
+              <strong style={{ color: '#7c3aed' }}>i</strong>,{' '}
+              <strong style={{ color: '#f59e0b' }}>j</strong> y{' '}
+              <strong style={{ color: '#3b82f6' }}>k</strong> muestran las posiciones de comparación
+              y escritura en tiempo real.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
+              <strong>Complejidad:</strong> O(n log n) tiempo · O(n) espacio
+            </p>
+          </Card>
         </CenterPanel>
       </MainArea>
 

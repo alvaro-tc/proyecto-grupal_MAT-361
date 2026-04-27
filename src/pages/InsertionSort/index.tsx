@@ -666,17 +666,7 @@ const InsertionSort: React.FC = () => {
             </div>
           </Card>
 
-          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
-            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
-            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
-              Insertion Sort construye una lista ordenada un elemento a la vez. Toma un elemento
-              (<strong>Key</strong>) y lo desplaza hacia la izquierda hasta encontrar su posición
-              correcta entre los ya ordenados.
-            </p>
-            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
-              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
-            </p>
-          </Card>
+
         </ControlPanel>
 
         <CenterPanel>
@@ -858,6 +848,18 @@ const InsertionSort: React.FC = () => {
               Ordenado ✓
             </div>
           </LegendRow>
+
+          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe', marginTop: 'auto' }}>
+            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
+            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
+              Insertion Sort construye una lista ordenada un elemento a la vez. Toma un elemento
+              (<strong>Key</strong>) y lo desplaza hacia la izquierda hasta encontrar su posición
+              correcta entre los ya ordenados.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
+              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
+            </p>
+          </Card>
         </CenterPanel>
       </MainArea>
 

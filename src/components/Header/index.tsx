@@ -138,6 +138,7 @@ const Header = ({ t }: { t: TFunction }) => {
                 >
                   <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>🔁</span> Johnson (CPM)
                 </AntMenu.Item>
+
                 <AntMenu.Item
                   key="assignment"
                   onClick={() => { history.push('/algorithms/assignment'); setVisibility(false); }}
@@ -170,9 +171,9 @@ const Header = ({ t }: { t: TFunction }) => {
                   Esquina Noroeste
                 </AntMenu.Item>
                 <AntMenu.Item
-                  key="selection-sort"
+                  key="sort"
                   onClick={() => {
-                    history.push("/algorithms/selection-sort");
+                    history.push("/algorithms/sort");
                     setVisibility(false);
                   }}
                   style={{
@@ -185,43 +186,8 @@ const Header = ({ t }: { t: TFunction }) => {
                   }}
                 >
                   <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
-                  Selection Sort
+                  Sort
                 </AntMenu.Item>
-                <AntMenu.Item
-                  key="insertion-sort"
-                  onClick={() => {
-                    history.push("/algorithms/insertion-sort");
-                    setVisibility(false);
-                  }}
-                  style={{
-                    padding: "12px 20px",
-                    borderRadius: "8px",
-                    fontFamily: "'Motiva Sans Bold', serif",
-                    color: "#2e186a",
-                    marginBottom: "4px",
-                    fontSize: "0.95rem",
-                  }}
-                >
-                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
-                  Insertion Sort
-                </AntMenu.Item>
-                <AntMenu.Item
-  onClick={() => {
-    history.push("/algorithms/shell-sort");
-    setVisibility(false);
-  }}
-  style={{
-    padding: "12px 20px",
-    borderRadius: "8px",
-    fontFamily: "'Motiva Sans Bold', serif",
-    color: "#2e186a",
-    marginBottom: "4px",
-    fontSize: "0.95rem",
-  }}
->
-  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
-  Shell Sort
-</AntMenu.Item>
 <AntMenu.Item
   key="binary-tree"
   onClick={() => {
@@ -241,23 +207,7 @@ const Header = ({ t }: { t: TFunction }) => {
   Árboles Binarios
 </AntMenu.Item>
 
-<AntMenu.Item
-  key="merge-sort"
-  onClick={() => {
-    history.push("/algorithms/merge-sort");
-    setVisibility(false);
-  }}
-  style={{
-    padding: "12px 20px",
-    borderRadius: "8px",
-    fontFamily: "'Motiva Sans Bold', serif",
-    color: "#2e186a",
-    fontSize: "0.95rem",
-  }}
->
-  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔀</span>
-  Merge Sort
-</AntMenu.Item>
+
               </AntMenu>
             }
             trigger={['hover']}

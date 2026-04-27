@@ -30,29 +30,19 @@ const routes = [
     component: "Assignment",
   },
   {
-    path: "/algorithms/selection-sort",
+    path: "/algorithms/sort",
     exact: true,
-    component: "SelectionSort",
-  },
-  {
-    path: "/algorithms/insertion-sort",
-    exact: true,
-    component: "InsertionSort",
-  },
-  {
-  path: "/algorithms/merge-sort",
-  exact: true,
-  component: "MergeSort",
-},
-  {
-    path: "/algorithms/shell-sort",
-    exact: true,
-    component: "ShellSort",
+    component: "Sort",
   },
   {
     path: "/algorithms/binary-tree",
     exact: true,
     component: "BinaryTree",
+  },
+  {
+    path: "/algorithms/dijkstra",
+    exact: true,
+    component: "Dijkstra",
   },
   {
     path: "/login",

@@ -347,6 +347,7 @@ const ShellSort: React.FC = () => {
   const [manualText, setManualText] = useState('');
   const [simSpeed, setSimSpeed]   = useState(500);
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [isExportModalVisible, setIsExportModalVisible] = useState(false);
   const [exportFileName, setExportFileName] = useState('shell-sort-data');
 
@@ -678,22 +679,7 @@ const ShellSort: React.FC = () => {
             </Button>
           </Card>
 
-          <Card>
-            <CardTitle>↕️ Tipo de ordenamiento</CardTitle>
-            <Radio.Group
-              value={sortOrder}
-              onChange={e => setSortOrder(e.target.value)}
-              disabled={isRunning}
-              style={{ display: 'flex', width: '100%' }}
-            >
-              <Radio.Button style={{ flex: 1, textAlign: 'center' }} value="asc">
-                Ascendente
-              </Radio.Button>
-              <Radio.Button style={{ flex: 1, textAlign: 'center' }} value="desc">
-                Descendente
-              </Radio.Button>
-            </Radio.Group>
-          </Card>
+
 
           <Card>
             <CardTitle>✏️ Entrada Manual</CardTitle>
@@ -736,17 +722,7 @@ const ShellSort: React.FC = () => {
             </div>
           </Card>
 
-          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
-            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
-            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
-              Shell Sort compara elementos separados por una distancia llamada <strong>gap</strong>.
-              En cada pasada, ese gap disminuye y el arreglo se va acercando al orden correcto
-              hasta terminar con <strong>gap = 1</strong>.
-            </p>
-            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
-              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
-            </p>
-          </Card>
+
         </ControlPanel>
 
         <CenterPanel>
@@ -754,7 +730,7 @@ const ShellSort: React.FC = () => {
             {(simPhase === 'idle' || isDone) && (
               <Button
                 type="primary" icon={<PlayCircleOutlined />}
-                onClick={handleSolve} disabled={elements.length < 2}
+                onClick={() => setShowOrderModal(true)} disabled={elements.length < 2}
                 style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
               >
                 {isDone ? 'Resolver de nuevo' : 'Resolver'}
@@ -928,8 +904,69 @@ const ShellSort: React.FC = () => {
               Ordenado ✓
             </div>
           </LegendRow>
+
+          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe', marginTop: 'auto' }}>
+            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
+            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
+              Shell Sort compara elementos separados por una distancia llamada <strong>gap</strong>.
+              En cada pasada, ese gap disminuye y el arreglo se va acercando al orden correcto
+              hasta terminar con <strong>gap = 1</strong>.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
+              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
+            </p>
+          </Card>
         </CenterPanel>
       </MainArea>
+      <Modal
+        open={showOrderModal}
+        title={
+          <span style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', fontSize: '1.1rem' }}>
+            ¿Cómo deseas ordenar?
+          </span>
+        }
+        onCancel={() => setShowOrderModal(false)}
+        footer={null}
+        centered
+        width={420}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '0.75rem 0 0.25rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            {(['asc', 'desc'] as SortOrder[]).map(order => (
+              <div
+                key={order}
+                onClick={() => setSortOrder(order)}
+                style={{
+                  flex: 1,
+                  border: `2px solid ${sortOrder === order ? '#2e186a' : '#e2e8f0'}`,
+                  borderRadius: 12,
+                  padding: '1.25rem 1rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  background: sortOrder === order ? '#f5f3ff' : 'white',
+                  transition: 'all 0.2s',
+                  boxShadow: sortOrder === order ? '0 4px 12px rgba(46,24,106,0.15)' : 'none',
+                }}
+              >
+                <div style={{ fontSize: '2.2rem' }}>{order === 'asc' ? '⬆️' : '⬇️'}</div>
+                <div style={{ fontFamily: "'Motiva Sans Bold', serif", color: '#2e186a', marginTop: 8, fontSize: '0.95rem' }}>
+                  {order === 'asc' ? 'Ascendente' : 'Descendente'}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 3 }}>
+                  {order === 'asc' ? 'menor → mayor' : 'mayor → menor'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="primary" size="large" icon={<PlayCircleOutlined />}
+            onClick={() => { setShowOrderModal(false); handleSolve(); }}
+            style={{ background: '#2e186a', borderColor: '#2e186a', borderRadius: 8 }}
+          >
+            Comenzar
+          </Button>
+        </div>
+      </Modal>
 
       <Modal
         open={isExportModalVisible}

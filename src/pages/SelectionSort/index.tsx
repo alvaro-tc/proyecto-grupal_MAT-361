@@ -670,17 +670,7 @@ const SelectionSort: React.FC = () => {
           </Card>
 
           {/* Info */}
-          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe' }}>
-            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
-            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
-              Selection Sort busca repetidamente el elemento <strong>{sortOrder === 'asc' ? 'mínimo' : 'máximo'}</strong> de la parte no ordenada
-              y lo coloca en la siguiente posición correcta. El triángulo rojo señala el elemento
-              que se está comparando y el naranja marca el {sortOrder === 'asc' ? 'mínimo' : 'máximo'} encontrado hasta ahora.
-            </p>
-            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
-              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
-            </p>
-          </Card>
+
         </ControlPanel>
 
         {/* ── Center: canvas ── */}
@@ -867,6 +857,18 @@ const SelectionSort: React.FC = () => {
               Ordenado ✓
             </div>
           </LegendRow>
+
+          <Card style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', border: '1px solid #ddd6fe', marginTop: 'auto' }}>
+            <CardTitle style={{ color: '#5b21b6' }}>ℹ️ Cómo funciona</CardTitle>
+            <p style={{ fontSize: '0.8rem', color: '#5b21b6', margin: 0, lineHeight: 1.65 }}>
+              Selection Sort busca repetidamente el elemento <strong>{sortOrder === 'asc' ? 'mínimo' : 'máximo'}</strong> de la parte no ordenada
+              y lo coloca en la siguiente posición correcta. El triángulo rojo señala el elemento
+              que se está comparando y el naranja marca el {sortOrder === 'asc' ? 'mínimo' : 'máximo'} encontrado hasta ahora.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: '#7c3aed', margin: '0.75rem 0 0' }}>
+              <strong>Complejidad:</strong> O(n²) tiempo · O(1) espacio
+            </p>
+          </Card>
         </CenterPanel>
       </MainArea>
 
