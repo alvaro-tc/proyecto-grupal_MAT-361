@@ -45,6 +45,11 @@ const routes = [
     component: "Dijkstra",
   },
   {
+    path: "/algorithms/kruskal",
+    exact: true,
+    component: "Kruskal",
+  },
+  {
     path: "/login",
     exact: true,
     component: "Login",

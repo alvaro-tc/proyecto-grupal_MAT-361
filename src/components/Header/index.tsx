@@ -147,6 +147,7 @@ const Header = ({ t }: { t: TFunction }) => {
                     borderRadius: '8px',
                     fontFamily: "'Motiva Sans Bold', serif",
                     color: '#2e186a',
+                    marginBottom: '4px',
                     fontSize: '0.95rem'
                   }}
                 >
@@ -188,26 +189,58 @@ const Header = ({ t }: { t: TFunction }) => {
                   <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🔢</span>
                   Sort
                 </AntMenu.Item>
-<AntMenu.Item
-  key="binary-tree"
-  onClick={() => {
-    history.push("/algorithms/binary-tree");
-    setVisibility(false);
-  }}
-  style={{
-    padding: "12px 20px",
-    borderRadius: "8px",
-    fontFamily: "'Motiva Sans Bold', serif",
-    color: "#2e186a",
-    marginBottom: "4px",
-    fontSize: "0.95rem",
-  }}
->
-  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🌳</span>
-  Árboles Binarios
-</AntMenu.Item>
-
-
+                <AntMenu.Item
+                  key="binary-tree"
+                  onClick={() => {
+                    history.push("/algorithms/binary-tree");
+                    setVisibility(false);
+                  }}
+                  style={{
+                    padding: "12px 20px",
+                    borderRadius: "8px",
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: "#2e186a",
+                    marginBottom: "4px",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🌳</span>
+                  Árboles Binarios
+                </AntMenu.Item>
+                <AntMenu.Item
+                  key="kruskal"
+                  onClick={() => {
+                    history.push("/algorithms/kruskal");
+                    setVisibility(false);
+                  }}
+                  style={{
+                    padding: "12px 20px",
+                    borderRadius: "8px",
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: "#2e186a",
+                    marginBottom: "4px",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>🌲</span> Kruskal
+                </AntMenu.Item>
+                <AntMenu.Item
+                  key="dijkstra"
+                  onClick={() => {
+                    history.push("/algorithms/dijkstra");
+                    setVisibility(false);
+                  }}
+                  style={{
+                    padding: "12px 20px",
+                    borderRadius: "8px",
+                    fontFamily: "'Motiva Sans Bold', serif",
+                    color: "#2e186a",
+                    marginBottom: "4px",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  <span style={{ fontSize: "1.2rem", marginRight: "8px" }}>📍</span> Dijkstra
+                </AntMenu.Item>
               </AntMenu>
             }
             trigger={['hover']}

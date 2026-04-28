@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import styled, { keyframes, css } from "styled-components";
-import { Switch, Modal, Input, Button, message, InputNumber, Slider, List, Select } from "antd";
+import { Switch, Modal, Input, Button, message, InputNumber, Slider, List } from "antd";
 import {
     PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined,
     SettingOutlined, DeleteOutlined, EditOutlined, InfoCircleOutlined,
@@ -133,7 +133,7 @@ const NodeCircle = styled.div<{ color: string; isSelected: boolean; isCritical?:
   &:hover { transform: translate(-50%, -50%) scale(1.08); }
 `;
 
-const DijkstraNode = styled.div<{ color: string; isSelected: boolean; isCritical?: boolean; isActive?: boolean; }>`
+const KruskalNode = styled.div<{ color: string; isSelected: boolean; isCritical?: boolean; isActive?: boolean; }>`
   position: absolute; width: 60px; height: 60px; border-radius: 50%;
   transform: translate(-50%, -50%);
   border: ${p => p.isCritical ? '3px solid #ef4444' : p.isSelected ? '3px solid #8b5cf6' : '3px solid #c7d2fe'};
@@ -200,7 +200,7 @@ const COLORS = ["#2e186a", "#1890ff", "#52c41a", "#faad14", "#f5222d", "#722ed1"
 
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-const Dijkstra: React.FC = () => {
+const Kruskal: React.FC = () => {
     useTranslation();
 
     // ── Graph state ──────────────────────────────────────────────────
@@ -266,8 +266,6 @@ const Dijkstra: React.FC = () => {
     const [isEditEdgeModalVisible, setIsEditEdgeModalVisible] = useState(false);
     const [isGoalModalVisible, setIsGoalModalVisible] = useState(false);
     const [optimizationGoal, setOptimizationGoal] = useState<'min' | 'max'>('max');
-    const [originNode, setOriginNode] = useState<string | null>(null);
-    const [destinationNode, setDestinationNode] = useState<string | null>(null);
 
     // ── Simulation state ─────────────────────────────────────────────
     const [simState, setSimState] = useState<SimState>('idle');
@@ -305,7 +303,7 @@ const Dijkstra: React.FC = () => {
 
     // JSON Export name modal
     const [isExportModalVisible, setIsExportModalVisible] = useState(false);
-    const [exportFileName, setExportFileName] = useState('grafo-dijkstra');
+    const [exportFileName, setExportFileName] = useState('grafo-kruskal');
 
     useEffect(() => {
         const h = () => setContextMenu(c => ({ ...c, visible: false }));
@@ -322,144 +320,132 @@ const Dijkstra: React.FC = () => {
     // ── Validate Graph ────────────────────────────────────────────────
     const validateGraph = useCallback((): string | null => {
         if (nodes.length < 2) return "El grafo debe tener al menos 2 nodos.";
+        if (edges.length === 0) return "El grafo debe tener al menos una arista.";
         return null;
     }, [nodes, edges]);
 
     // Derived: live validity for indicator badge
     const graphValid = useMemo(() => validateGraph() === null, [validateGraph]);
 
-    // ── Run Dijkstra simulation ───────────────────────────────────────
-    const runSimulation = useCallback(async (goal: 'min' | 'max' = 'min') => {
+    // ── Run CPM simulation ────────────────────────────────────────────
+    const runSimulation = useCallback(async (goal: 'min' | 'max') => {
         const err = validateGraph();
-        if (err) { Modal.error({ title: "Grafo inválido para Dijkstra", content: err, centered: true }); return; }
+        if (err) { Modal.error({ title: "Grafo inválido para Kruskal", content: err, centered: true }); return; }
 
         simAbort.current = false;
         setSimState('running');
-        setOptimizationGoal(goal);
+        setCriticalEdges(new Set());
+        setCriticalNodes(new Set());
+        setCriticalPath([]);
+        setDistances({});
+        setPredecessors({});
+        setActiveNode(null);
+        setActiveEdge(null);
 
-        // Use origin node, fallback to selected node, fallback to first
-        let startNodeId = originNode ?? selectedNode;
-        if (!startNodeId || !nodes.find(n => n.id === startNodeId)) {
-            startNodeId = nodes[0].id;
+        // Build undirected edge list (deduplicate bidirectional)
+        const seen = new Set<string>();
+        const undirEdges: { id: string; src: string; tgt: string; w: number }[] = [];
+        for (const e of edges) {
+            const key = [e.source, e.target].sort().join('|');
+            if (!seen.has(key)) {
+                seen.add(key);
+                undirEdges.push({ id: e.id, src: e.source, tgt: e.target, w: parseFloat(e.weight || '1') });
+            }
         }
 
-        const INIT = goal === 'max' ? -Infinity : Infinity;
-        const isBetter = (a: number, b: number) => goal === 'max' ? a > b : a < b;
+        const sorted = [...undirEdges].sort((a, b) => goal === 'min' ? a.w - b.w : b.w - a.w);
+        const nodeIds = nodes.map(n => n.id);
 
-        const dist: Record<string, number> = {};
-        const prev: Record<string, string[]> = {};
-        const visited = new Set<string>();
+        // Union-Find factory
+        const mkUF = (ids: string[]) => {
+            const p: Record<string, string> = {};
+            const r: Record<string, number> = {};
+            ids.forEach(id => { p[id] = id; r[id] = 0; });
+            const find = (x: string): string => { if (p[x] !== x) p[x] = find(p[x]); return p[x]; };
+            const union = (a: string, b: string): boolean => {
+                const ra = find(a), rb = find(b);
+                if (ra === rb) return false;
+                if (r[ra] < r[rb]) p[ra] = rb;
+                else if (r[ra] > r[rb]) p[rb] = ra;
+                else { p[rb] = ra; r[ra]++; }
+                return true;
+            };
+            return { find, union };
+        };
 
-        nodes.forEach(n => {
-            dist[n.id] = INIT;
-            prev[n.id] = [];
-        });
+        // --- Animated greedy pass (primary MST) ---
+        const uf = mkUF(nodeIds);
+        const mstEdgeIds = new Set<string>();
+        const mstNodeSet = new Set<string>();
+        let totalWeight = 0;
 
-        dist[startNodeId] = 0;
-        setDistances({ ...dist });
-        setPredecessors({});
-        setCriticalEdges(new Set());
-        setCriticalPath([]);
-        setCriticalNodes(new Set());
-
-        const pq: { id: string, d: number }[] = [{ id: startNodeId, d: 0 }];
-
-        while (pq.length > 0) {
+        for (const e of sorted) {
             if (simAbort.current) { setSimState('idle'); return; }
-
-            pq.sort((a, b) => goal === 'max' ? b.d - a.d : a.d - b.d);
-            const { id: u } = pq.shift()!;
-
-            if (visited.has(u)) continue;
-            visited.add(u);
-            setActiveNode(u);
-
+            setActiveEdge(e.id);
             await sleep();
-
-            const outgoing = edges.filter(e => e.source === u);
-            for (const edge of outgoing) {
-                if (simAbort.current) { setSimState('idle'); return; }
-                const v = edge.target;
-                const weight = parseFloat(edge.weight || '1');
-
-                setActiveEdge(edge.id);
-                await new Promise<void>(res => setTimeout(res, simSpeedRef.current * 0.4));
-
-                const candidate = dist[u] + weight;
-                if (isBetter(candidate, dist[v])) {
-                    dist[v] = candidate;
-                    prev[v] = [u];
-                    pq.push({ id: v, d: dist[v] });
-                } else if (candidate === dist[v]) {
-                    if (!prev[v].includes(u)) {
-                        prev[v].push(u);
-                    }
-                }
-
-                setDistances({ ...dist });
-                setPredecessors({ ...prev });
-                setActiveEdge(null);
+            if (uf.find(e.src) !== uf.find(e.tgt)) {
+                uf.union(e.src, e.tgt);
+                mstEdgeIds.add(e.id);
+                mstNodeSet.add(e.src);
+                mstNodeSet.add(e.tgt);
+                totalWeight += e.w;
+                setCriticalEdges(new Set(mstEdgeIds));
+                setCriticalNodes(new Set(mstNodeSet));
+                setActiveNode(e.src);
+                await sleep();
+                setActiveNode(e.tgt);
                 await sleep();
             }
-
-            setActiveNode(null);
+            setActiveEdge(null);
         }
 
-        // Reconstruct paths from startNodeId to all reachable nodes
-        const critEdges = new Set<string>();
-        const critNodes = new Set<string>();
+        // --- Find ALL equivalent MSTs via backtracking on weight groups ---
+        const wGroups: { w: number; es: typeof undirEdges }[] = [];
+        for (const e of sorted) {
+            const last = wGroups[wGroups.length - 1];
+            if (last && last.w === e.w) last.es.push(e);
+            else wGroups.push({ w: e.w, es: [e] });
+        }
 
-        // Backtrace with cycle protection (negative weights can create cycles in prev)
-        const backtrace = (node: string, seen: Set<string>) => {
-            if (seen.has(node)) return;
-            seen.add(node);
-            critNodes.add(node);
-            const pList = prev[node];
-            if (!pList || pList.length === 0) return;
-            for (const p of pList) {
-                const e = edges.find(ed => ed.source === p && ed.target === node);
-                if (e) critEdges.add(e.id);
-                backtrace(p, seen);
-            }
+        const allMSTs: string[][] = [];
+        const targetEC = nodeIds.length - 1;
+
+        const backtrack = (gIdx: number, chosen: string[]) => {
+            if (allMSTs.length >= 6) return;
+            if (chosen.length === targetEC) { allMSTs.push([...chosen]); return; }
+            if (gIdx >= wGroups.length) return;
+            const group = wGroups[gIdx];
+            const trySubsets = (idx2: number, sub: string[]) => {
+                if (allMSTs.length >= 6) return;
+                if (chosen.length + sub.length === targetEC) { backtrack(gIdx + 1, [...chosen, ...sub]); return; }
+                if (idx2 >= group.es.length) { backtrack(gIdx + 1, [...chosen, ...sub]); return; }
+                const e2 = group.es[idx2];
+                const uf2 = mkUF(nodeIds);
+                [...chosen, ...sub].forEach(eid => { const ed = undirEdges.find(x => x.id === eid); if (ed) uf2.union(ed.src, ed.tgt); });
+                if (uf2.find(e2.src) !== uf2.find(e2.tgt)) trySubsets(idx2 + 1, [...sub, e2.id]);
+                trySubsets(idx2 + 1, sub);
+            };
+            trySubsets(0, []);
         };
+        backtrack(0, []);
 
-        nodes.forEach(n => {
-            if (isFinite(dist[n.id]) && n.id !== startNodeId) {
-                backtrace(n.id, new Set<string>());
-            }
-        });
+        // Convert to display labels
+        const mstSummaries: string[][] = allMSTs.map(edgeIds =>
+            edgeIds.map(eid => {
+                const ed = undirEdges.find(x => x.id === eid);
+                if (!ed) return eid;
+                const sn = nodes.find(n => n.id === ed.src);
+                const tn = nodes.find(n => n.id === ed.tgt);
+                return `${sn?.label ?? ed.src}—${tn?.label ?? ed.tgt}(${ed.w})`;
+            })
+        );
 
-        setCriticalEdges(critEdges);
-        setCriticalNodes(critNodes);
-
-        // Generate textual path summary (cycle-protected)
-        const paths: string[][] = [];
-        const dfs = (curr: string, currentPath: string[], seen: Set<string>) => {
-            if (curr === startNodeId) {
-                paths.push([curr, ...currentPath]);
-                return;
-            }
-            if (seen.has(curr)) return;
-            const newSeen = new Set(seen);
-            newSeen.add(curr);
-            const pList = prev[curr];
-            if (!pList || pList.length === 0) return;
-            for (const p of pList) {
-                dfs(p, [curr, ...currentPath], newSeen);
-            }
-        };
-
-        // Find leaf nodes in optimal path tree
-        const getOutgoingCritEdges = (nodeId: string) => edges.filter(e => e.source === nodeId && critEdges.has(e.id));
-        nodes.forEach(n => {
-            if (isFinite(dist[n.id]) && n.id !== startNodeId && getOutgoingCritEdges(n.id).length === 0) {
-                dfs(n.id, [], new Set<string>());
-            }
-        });
-
-        setCriticalPath(paths.map(p => p.reverse()));
+        setCriticalPath(mstSummaries);
+        setDistances({ __total__: totalWeight } as any);
+        setActiveNode(null);
+        setActiveEdge(null);
         setSimState('done');
-    }, [nodes, edges, validateGraph, selectedNode, originNode]);
+    }, [nodes, edges, validateGraph]);
 
     const stopSimulation = () => {
         simAbort.current = true;
@@ -533,12 +519,12 @@ const Dijkstra: React.FC = () => {
 
     // ─── JSON Export / Import (guests only) ──────────────────────────────────
     const handleExportJSON = () => {
-        setExportFileName('grafo-dijkstra');
+        setExportFileName('grafo-kruskal');
         setIsExportModalVisible(true);
     };
 
     const doExportJSON = () => {
-        const name = exportFileName.trim() || 'grafo-dijkstra';
+        const name = exportFileName.trim() || 'grafo-kruskal';
         const data = {
             version: 1,
             nodes,
@@ -592,8 +578,6 @@ const Dijkstra: React.FC = () => {
                 setNodes([]);
                 setEdges([]);
                 setSelectedNode(null);
-                setOriginNode(null);
-                setDestinationNode(null);
                 setPendingConnection(null);
                 resetSimulation();
                 message.success('Grafo borrado correctamente');
@@ -661,7 +645,7 @@ const Dijkstra: React.FC = () => {
         if (longPressData.current.timer) { clearTimeout(longPressData.current.timer); longPressData.current.timer = null; }
         if (mode !== 'creation') return;
         if (!selectedNode) { setSelectedNode(nodeId); message.info("Haz clic en otro nodo para conectar"); return; }
-        // Block self-loops
+        // Block self-loops — CPM/Dijkstra requires a DAG
         if (selectedNode === nodeId) {
             message.error("No se permiten bucles (self-loops).");
             setSelectedNode(null);
@@ -683,6 +667,7 @@ const Dijkstra: React.FC = () => {
     const handleCreateEdge = () => {
         if (!pendingConnection) return;
         const w = edgeWeight ?? 1;
+        
         setEdges(prev => [...prev, {
             id: `edge-${Date.now()}`, source: pendingConnection.source, target: pendingConnection.target,
             weight: w.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 }
@@ -695,8 +680,6 @@ const Dijkstra: React.FC = () => {
         if (contextMenu.type === 'node') {
             setNodes(n => n.filter(nd => nd.id !== contextMenu.id));
             setEdges(e => e.filter(ed => ed.source !== contextMenu.id && ed.target !== contextMenu.id));
-            if (originNode === contextMenu.id) setOriginNode(null);
-            if (destinationNode === contextMenu.id) setDestinationNode(null);
             message.success("Nodo eliminado");
         } else {
             setEdges(e => e.filter(ed => ed.id !== contextMenu.id));
@@ -718,6 +701,7 @@ const Dijkstra: React.FC = () => {
 
     const handleEditEdge = () => {
         if (editEdgeWeight !== null) {
+            
             setEdges(es => es.map(e => e.id === contextMenu.id ? { ...e, weight: editEdgeWeight.toString() } : e));
         }
         setIsEditEdgeModalVisible(false);
@@ -772,6 +756,10 @@ const Dijkstra: React.FC = () => {
             const idx = prev.findIndex(e => e.source === sourceId && e.target === targetId);
             if (value === "") { return idx !== -1 ? prev.filter((_, i) => i !== idx) : prev; }
             let num = parseFloat(value); if (isNaN(num)) num = 0;
+            if (num < 0) {
+                message.error("El Algoritmo de Kruskal no permite aristas con peso negativo. Ingresa un valor ≥ 0.");
+                return prev;
+            }
             if (idx !== -1) { const ne = [...prev]; ne[idx] = { ...ne[idx], weight: num.toString() }; return ne; }
             const newEdge = { id: `edge-${Date.now()}-${Math.random()}`, source: sourceId, target: targetId, weight: num.toString(), isDirected: true, cpOffset: { dx: 0, dy: 0 } };
             return [...prev, newEdge];
@@ -826,9 +814,9 @@ const Dijkstra: React.FC = () => {
         <Wrap>
             {/* ── Simulation Controls Bar ───────────────────────────────── */}
             <SimBar>
-                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
                     <div style={{ fontWeight: 800, color: '#2e186a', fontSize: '1.2rem' }}>
-                        Algoritmo de Dijkstra
+                        Algoritmo de Kruskal
                     </div>
                     {/* Graph validity indicator */}
                     <div style={{
@@ -841,37 +829,8 @@ const Dijkstra: React.FC = () => {
                     }}>
                         {graphValid ? '✅ Grafo válido' : '⚠ Grafo inválido'}
                     </div>
-
-                    {/* Origin / Destination selectors */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <SimBarLabel style={{ color: '#16a34a', fontWeight: 700 }}>Origen:</SimBarLabel>
-                        <Select
-                            size="small"
-                            style={{ minWidth: 110 }}
-                            placeholder="Selecciona"
-                            value={originNode ?? undefined}
-                            onChange={(v) => setOriginNode(v ?? null)}
-                            allowClear
-                            disabled={isSimActive || nodes.length === 0}
-                            options={nodes.map(n => ({ value: n.id, label: n.label }))}
-                        />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <SimBarLabel style={{ color: '#ef4444', fontWeight: 700 }}>Destino:</SimBarLabel>
-                        <Select
-                            size="small"
-                            style={{ minWidth: 110 }}
-                            placeholder="Todos"
-                            value={destinationNode ?? undefined}
-                            onChange={(v) => setDestinationNode(v ?? null)}
-                            allowClear
-                            disabled={isSimActive || nodes.length === 0}
-                            options={nodes
-                                .filter(n => n.id !== originNode)
-                                .map(n => ({ value: n.id, label: n.label }))}
-                        />
-                    </div>
                 </div>
+
 
                 {/* Green start button — always visible */}
                 <Button
@@ -990,8 +949,7 @@ const Dijkstra: React.FC = () => {
                                 <li><b>Crear Nodo:</b> Clic en espacio vacío del lienzo.</li>
                                 <li><b>Conectar Nodos:</b> Clic en un nodo para seleccionarlo, luego clic en otro nodo.</li>
                                 <li><b>Matriz:</b> Edita los valores directamente para crear/eliminar aristas.</li>
-                                <li><b>Pesos:</b> Se admiten valores positivos, cero y negativos.</li>
-                                <li style={{ color: '#ea580c' }}><b>⚠ No se permiten</b> bucles (self-loops).</li>
+                                <li style={{ color: '#ea580c' }}><b>⚠ No se permiten</b> bucles, ciclos ni pesos negativos.</li>
                             </ul>
                             <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Modo Edición</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
@@ -999,14 +957,11 @@ const Dijkstra: React.FC = () => {
                                 <li><b>Ajustar Curvatura:</b> Arrastra el peso de una arista.</li>
                                 <li><b>Editar / Eliminar:</b> Mantén presionado un nodo o arista.</li>
                             </ul>
-                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación de Dijkstra</p>
+                            <p style={{ fontWeight: 700, color: '#1e293b', margin: '0.75rem 0 0.25rem', fontSize: '0.9rem' }}>Simulación de Kruskal</p>
                             <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.86rem', color: '#334155', lineHeight: '1.7' }}>
-                                <li>Selecciona un nodo como inicio antes de ejecutar (opcional).</li>
-                                <li>Al pulsar <b>Comenzar</b> elige <b>Minimizar</b> o <b>Maximizar</b>.</li>
-                                <li>El indicador <b>✅/⚠</b> en la barra muestra si el grafo es válido.</li>
-                                <li>Los nodos muestran la <b style={{ color: '#92400e' }}>distancia</b> acumulada desde el origen.</li>
-                                <li>Aristas en <b style={{ color: '#ef4444' }}>rojo</b> = camino óptimo encontrado.</li>
-                                <li style={{ color: '#ea580c' }}><b>⚠</b> Con pesos negativos o ciclos los resultados pueden no ser óptimos.</li>
+                                <li>El grafo puede ser dirigido o no dirigido, Kruskal lo tratará como <b>no dirigido</b>.</li>
+                                <li>Elige <b>Min</b> o <b>Max</b> para buscar el Árbol de Expansión Mínima o Máxima.</li>
+                                <li>Aristas en <b style={{ color: '#ef4444' }}>rojo</b> = parte del Árbol de Expansión.</li>
                             </ul>
                         </LeftSidebar>
                         {/* Drag handle between instructions and canvas */}
@@ -1066,7 +1021,7 @@ const Dijkstra: React.FC = () => {
                                         strokeWidth={criticalEdges.has(edge.id) ? 3.5 : 2.5}
                                         fill="none"
                                         strokeDasharray={activeEdge === edge.id ? '6 3' : 'none'}
-                                        markerEnd={`url(#arrow-${edge.id})`}
+                                        markerEnd={undefined}
                                         style={{ transition: 'stroke 0.5s, stroke-width 0.3s' }}
                                     />
                                 );
@@ -1106,7 +1061,7 @@ const Dijkstra: React.FC = () => {
 
                             if (simState === 'running' || simState === 'paused' || simState === 'done') {
                                 return (
-                                    <DijkstraNode key={node.id} color={node.color}
+                                    <KruskalNode key={node.id} color={node.color}
                                         isSelected={selectedNode === node.id}
                                         isCritical={isCrit} isActive={isAct}
                                         style={{ left: node.x, top: node.y }}
@@ -1121,9 +1076,9 @@ const Dijkstra: React.FC = () => {
                                         <DLabel color={node.color} translate="no">{node.label}</DLabel>
                                         
                                             
-                                            <DDist hasValue={d !== undefined && isFinite(d)} translate="no">{d !== undefined && isFinite(d) ? d : "∞"}</DDist>
+                                            <DDist hasValue={d !== undefined && d !== Infinity} translate="no">{d !== undefined && d !== Infinity ? d : "∞"}</DDist>
                                         
-                                    </DijkstraNode>
+                                    </KruskalNode>
                                 );
                             }
 
@@ -1145,11 +1100,11 @@ const Dijkstra: React.FC = () => {
                         })}
                     </CanvasSVG>
 
-                    {/* Legend while sim running/done */}
-                    {isSimActive && (
+                    {/* Kruskal Legend while sim running/done */}
+                    {(isSimActive || simState === 'done') && (
                         <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 16, fontSize: '0.75rem' }}>
-                            <span style={{ color: '#92400e', fontWeight: 600 }}><span style={{ background: '#fef3c7', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>Dist</span> {optimizationGoal === 'max' ? 'Distancia Máxima' : 'Distancia Mínima'}</span>
-                            <span style={{ color: '#ef4444', fontWeight: 600 }}>━ {optimizationGoal === 'max' ? 'Caminos Más Largos' : 'Caminos Más Cortos'}</span>
+                            <span style={{ color: '#8b5cf6', fontWeight: 600 }}>┅ Arista evaluada</span>
+                            <span style={{ color: '#ef4444', fontWeight: 600 }}>━ Arista en el árbol de expansión</span>
                         </div>
                     )}
                 </CanvasOuter>
@@ -1157,75 +1112,50 @@ const Dijkstra: React.FC = () => {
                 {/* Removed Matrix */}
             </EditorWrap>
 
-            {/* ── Optimal Paths Summary ─────────────────────────────────── */}
-            {simState === 'done' && criticalPath.length > 0 && (() => {
-                const displayedPaths = destinationNode
-                    ? criticalPath.filter(p => p[p.length - 1] === destinationNode)
-                    : criticalPath;
-                const destLabel = destinationNode ? nodes.find(n => n.id === destinationNode)?.label : null;
-                if (destinationNode && displayedPaths.length === 0) {
-                    return (
-                        <SummaryPanel>
-                            <div style={{ fontWeight: 700, color: '#ef4444', fontSize: '1rem' }}>
-                                🔴 No existe camino desde el origen hasta el destino {destLabel}.
-                            </div>
-                        </SummaryPanel>
-                    );
-                }
-                return (
+            {/* ── Critical Path Summary ─────────────────────────────────── */}
+                        {simState === 'done' && (
                 <SummaryPanel>
-                    <div style={{ fontWeight: 700, color: '#ef4444', marginBottom: 8, fontSize: '1rem' }}>
-                        🔴 {optimizationGoal === 'max'
-                            ? (displayedPaths.length > 1 ? 'Caminos Más Largos' : 'Camino Más Largo')
-                            : (displayedPaths.length > 1 ? 'Caminos Más Cortos' : 'Camino Más Corto')}
-                        {destinationNode
-                            ? ` (origen → destino ${destLabel})`
-                            : ` (${displayedPaths.length} ${displayedPaths.length === 1 ? 'destino' : 'destinos'})`}
+                    <div style={{ fontWeight: 700, color: '#2e186a', marginBottom: 12, fontSize: '1rem' }}>
+                        🌲 Árbol de Expansión {optimizationGoal === 'min' ? 'Mínima' : 'Máxima'}
+                        <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#64748b', marginLeft: 8 }}>
+                            Peso total: <b style={{ color: '#ef4444' }}>{(distances as any).__total__ ?? '?'}</b>
+                        </span>
+                        {criticalPath.length > 1 && (
+                            <span style={{ marginLeft: 12, fontSize: '0.78rem', background: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 10px', fontWeight: 600 }}>
+                                {criticalPath.length} soluciones equivalentes
+                            </span>
+                        )}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {displayedPaths.map((path, pIdx) => {
-                            const endId = path[path.length - 1];
-                            const total = distances[endId];
-                            return (
-                                <div key={pIdx} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                    <span style={{
-                                        background: '#fef2f2', color: '#b91c1c', borderRadius: 6,
-                                        padding: '3px 10px', fontWeight: 700, fontSize: '0.82rem',
-                                        border: '1px solid #fecaca', whiteSpace: 'nowrap'
-                                    }}>
-                                        Total: {isFinite(total) ? total : '∞'}
-                                    </span>
-                                    {path.map((nodeId, idx) => {
-                                        const node = nodes.find(n => n.id === nodeId);
-                                        const d = distances[nodeId];
-                                        return (
-                                            <React.Fragment key={`${pIdx}-${nodeId}-${idx}`}>
-                                                <span translate="no" style={{
-                                                    background: node?.color, color: 'white', borderRadius: 8,
-                                                    padding: '4px 12px', fontWeight: 700, fontSize: '0.9rem',
-                                                    border: '2px solid #ef4444'
-                                                }}>
-                                                    {node?.label ?? nodeId}
-                                                    <span translate="no" style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                                                        {' '}(Dist: {isFinite(d) ? d : '∞'})
-                                                    </span>
-                                                </span>
-                                                {idx < path.length - 1 && <span style={{ color: '#ef4444', fontWeight: 700 }}>→</span>}
-                                            </React.Fragment>
-                                        );
-                                    })}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {criticalPath.map((edgeLabels, pIdx) => (
+                            <div key={pIdx} style={{ background: pIdx === 0 ? '#f0fdf4' : '#f8fafc', borderRadius: 12, padding: '10px 14px', border: `1.5px solid ${pIdx === 0 ? '#86efac' : '#e2e8f0'}` }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: pIdx === 0 ? '#16a34a' : '#64748b', marginBottom: 6 }}>
+                                    {pIdx === 0 ? '★ Solución principal' : `Solución alternativa ${pIdx + 1}`}
                                 </div>
-                            );
-                        })}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    {edgeLabels.map((lbl, i) => (
+                                        <React.Fragment key={i}>
+                                            <span style={{
+                                                background: pIdx === 0 ? '#dcfce7' : '#f1f5f9',
+                                                color: pIdx === 0 ? '#15803d' : '#334155',
+                                                border: `1.5px solid ${pIdx === 0 ? '#86efac' : '#cbd5e1'}`,
+                                                borderRadius: 8, padding: '3px 10px', fontWeight: 600, fontSize: '0.85rem'
+                                            }}>
+                                                {lbl}
+                                            </span>
+                                            {i < edgeLabels.length - 1 && <span style={{ color: '#94a3b8', fontWeight: 700 }}>+</span>}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                     <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#64748b' }}>
-                        {optimizationGoal === 'max'
-                            ? 'Rutas con la mayor distancia acumulada desde el nodo de inicio.'
-                            : 'Rutas con la menor distancia acumulada desde el nodo de inicio.'}
+                        Las aristas en <b style={{ color: '#ef4444' }}>rojo</b> en el grafo forman el árbol de expansión {optimizationGoal === 'min' ? 'mínima' : 'máxima'}.
+                        {criticalPath.length > 1 && ' Se muestran todas las soluciones con el mismo peso total óptimo.'}
                     </div>
                 </SummaryPanel>
-                );
-            })()}
+            )}
 
             {/* ── Context Menu ──────────────────────────────────────────── */}
             {contextMenu.visible && (
@@ -1253,8 +1183,8 @@ const Dijkstra: React.FC = () => {
                 <div style={{ padding: '0.5rem 0' }}>
                     <label style={{ color: '#4a5568' }}>Peso de la arista (duración):</label>
                     <InputNumber value={edgeWeight} onChange={(v) => { setEdgeWeight(v); setEdgeWeightError(false); }} onPressEnter={handleCreateEdge}
-                        autoFocus style={{ width: '100%', marginTop: 8 }} placeholder="Ej. 5 (admite negativos)" status={edgeWeightError ? "error" : ""} />
-                    {edgeWeightError && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: 4, display: 'block' }}>Formato inválido.</span>}
+                        autoFocus style={{ width: '100%', marginTop: 8 }} placeholder="Ej. 5" status={edgeWeightError ? "error" : ""} />
+                    
                 </div>
             </Modal>
 
@@ -1286,7 +1216,7 @@ const Dijkstra: React.FC = () => {
                     <label style={{ color: '#4a5568' }}>Nuevo peso:</label>
                     <InputNumber value={editEdgeWeight} onChange={(v) => { setEditEdgeWeight(v); setEditEdgeWeightError(false); }} onPressEnter={handleEditEdge}
                         style={{ width: '100%', marginTop: 8 }} autoFocus status={editEdgeWeightError ? "error" : ""} />
-                    {editEdgeWeightError && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: 4, display: 'block' }}>Formato inválido.</span>}
+                    
                 </div>
             </Modal>
 
@@ -1417,52 +1347,54 @@ const Dijkstra: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* ── Optimization Goal Modal ───────────────────────────────── */}
+            
+
+            {/* ── Goal Selection Modal ────────────────────────────────────────────── */}
             <Modal
-                title={<ModalTitle title="Objetivo de Optimización" />}
+                title={<ModalTitle title="🎯 Seleccionar Objetivo" />}
                 open={isGoalModalVisible}
                 onCancel={() => setIsGoalModalVisible(false)}
                 footer={null}
                 centered
                 closeIcon={null}
             >
-                <div style={{ padding: '0.5rem 0' }}>
-                    <p style={{ color: '#4a5568', textAlign: 'center', marginBottom: '1.25rem', fontSize: '0.95rem' }}>
-                        ¿Qué deseas calcular desde el nodo de inicio?
+                <div style={{ padding: '0.75rem 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <p style={{ textAlign: 'center', color: '#475569', fontSize: '0.9rem', margin: 0 }}>
+                        ¿Qué tipo de árbol de expansión deseas encontrar?
                     </p>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
                         <Button
-                            shape="round"
                             size="large"
-                            style={{ background: '#16a34a', borderColor: '#16a34a', color: 'white', fontWeight: 600, minWidth: 180 }}
-                            onClick={() => {
-                                setIsGoalModalVisible(false);
-                                runSimulation('min');
+                            onClick={() => { setOptimizationGoal('min'); setIsGoalModalVisible(false); runSimulation('min'); }}
+                            style={{
+                                flex: 1, height: 80, borderRadius: 16,
+                                background: 'linear-gradient(135deg,#10b981,#059669)',
+                                color: 'white', fontWeight: 700, fontSize: '1rem',
+                                border: 'none', boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
                             }}
                         >
-                            Minimizar
+                            <div>📉 Minimizar</div>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 400, opacity: 0.9 }}>Árbol de Expansión Mínima</div>
                         </Button>
                         <Button
-                            shape="round"
                             size="large"
-                            style={{ background: '#dc2626', borderColor: '#dc2626', color: 'white', fontWeight: 600, minWidth: 180 }}
-                            onClick={() => {
-                                setIsGoalModalVisible(false);
-                                runSimulation('max');
+                            onClick={() => { setOptimizationGoal('max'); setIsGoalModalVisible(false); runSimulation('max'); }}
+                            style={{
+                                flex: 1, height: 80, borderRadius: 16,
+                                background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+                                color: 'white', fontWeight: 700, fontSize: '1rem',
+                                border: 'none', boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
                             }}
                         >
-                            Maximizar
+                            <div>📈 Maximizar</div>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 400, opacity: 0.9 }}>Árbol de Expansión Máxima</div>
                         </Button>
                     </div>
-                    <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '1rem', fontSize: '0.78rem' }}>
-                        Minimizar: camino más corto · Maximizar: camino más largo
-                    </p>
                 </div>
             </Modal>
-
         </Wrap >
 
     );
 };
 
-export default Dijkstra;
+export default Kruskal;
