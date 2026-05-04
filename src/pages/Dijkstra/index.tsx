@@ -267,7 +267,17 @@ const Dijkstra: React.FC = () => {
     const [isGoalModalVisible, setIsGoalModalVisible] = useState(false);
     const [optimizationGoal, setOptimizationGoal] = useState<'min' | 'max'>('max');
     const [originNode, setOriginNode] = useState<string | null>(null);
-    const [destinationNode, setDestinationNode] = useState<string | null>(null);
+    const [destinationNode, setDestinationNode] = useState<string | null | 'todos'>(null);
+
+    const rightmostNodeId = useMemo(() => {
+        if (nodes.length === 0) return null;
+        const startNodeId = originNode ?? selectedNode ?? nodes[0]?.id;
+        const candidates = nodes.filter(n => n.id !== startNodeId);
+        if (candidates.length === 0) return null;
+        return candidates.reduce((prev, current) => (prev.x > current.x) ? prev : current).id;
+    }, [nodes, originNode, selectedNode]);
+
+    const effectiveDestNode = destinationNode === 'todos' ? null : (destinationNode || rightmostNodeId);
 
     // ── Simulation state ─────────────────────────────────────────────
     const [simState, setSimState] = useState<SimState>('idle');
@@ -390,10 +400,6 @@ const Dijkstra: React.FC = () => {
                     dist[v] = candidate;
                     prev[v] = [u];
                     pq.push({ id: v, d: dist[v] });
-                } else if (candidate === dist[v]) {
-                    if (!prev[v].includes(u)) {
-                        prev[v].push(u);
-                    }
                 }
 
                 setDistances({ ...dist });
@@ -405,7 +411,7 @@ const Dijkstra: React.FC = () => {
             setActiveNode(null);
         }
 
-        // Reconstruct paths from startNodeId to all reachable nodes
+        // Reconstruct paths from startNodeId to target nodes
         const critEdges = new Set<string>();
         const critNodes = new Set<string>();
 
@@ -423,8 +429,10 @@ const Dijkstra: React.FC = () => {
             }
         };
 
-        nodes.forEach(n => {
-            if (isFinite(dist[n.id]) && n.id !== startNodeId) {
+        const targetNodes = effectiveDestNode ? [nodes.find(n => n.id === effectiveDestNode)!] : nodes;
+
+        targetNodes.forEach(n => {
+            if (n && isFinite(dist[n.id]) && n.id !== startNodeId) {
                 backtrace(n.id, new Set<string>());
             }
         });
@@ -449,17 +457,23 @@ const Dijkstra: React.FC = () => {
             }
         };
 
-        // Find leaf nodes in optimal path tree
-        const getOutgoingCritEdges = (nodeId: string) => edges.filter(e => e.source === nodeId && critEdges.has(e.id));
-        nodes.forEach(n => {
-            if (isFinite(dist[n.id]) && n.id !== startNodeId && getOutgoingCritEdges(n.id).length === 0) {
-                dfs(n.id, [], new Set<string>());
+        if (effectiveDestNode) {
+            if (isFinite(dist[effectiveDestNode]) && effectiveDestNode !== startNodeId) {
+                dfs(effectiveDestNode, [], new Set<string>());
             }
-        });
+        } else {
+            // Find leaf nodes in optimal path tree
+            const getOutgoingCritEdges = (nodeId: string) => edges.filter(e => e.source === nodeId && critEdges.has(e.id));
+            nodes.forEach(n => {
+                if (isFinite(dist[n.id]) && n.id !== startNodeId && getOutgoingCritEdges(n.id).length === 0) {
+                    dfs(n.id, [], new Set<string>());
+                }
+            });
+        }
 
         setCriticalPath(paths.map(p => p.reverse()));
         setSimState('done');
-    }, [nodes, edges, validateGraph, selectedNode, originNode]);
+    }, [nodes, edges, validateGraph, selectedNode, originNode, effectiveDestNode]);
 
     const stopSimulation = () => {
         simAbort.current = true;
@@ -861,14 +875,13 @@ const Dijkstra: React.FC = () => {
                         <Select
                             size="small"
                             style={{ minWidth: 110 }}
-                            placeholder="Todos"
-                            value={destinationNode ?? undefined}
-                            onChange={(v) => setDestinationNode(v ?? null)}
-                            allowClear
+                            value={destinationNode === 'todos' ? 'todos' : (destinationNode || rightmostNodeId || undefined)}
+                            onChange={(v) => setDestinationNode(v)}
                             disabled={isSimActive || nodes.length === 0}
-                            options={nodes
-                                .filter(n => n.id !== originNode)
-                                .map(n => ({ value: n.id, label: n.label }))}
+                            options={[
+                                { value: 'todos', label: 'Todos' },
+                                ...nodes.filter(n => n.id !== (originNode ?? selectedNode ?? nodes[0]?.id)).map(n => ({ value: n.id, label: n.label }))
+                            ]}
                         />
                     </div>
                 </div>
@@ -1158,16 +1171,17 @@ const Dijkstra: React.FC = () => {
             </EditorWrap>
 
             {/* ── Optimal Paths Summary ─────────────────────────────────── */}
-            {simState === 'done' && criticalPath.length > 0 && (() => {
-                const displayedPaths = destinationNode
-                    ? criticalPath.filter(p => p[p.length - 1] === destinationNode)
-                    : criticalPath;
-                const destLabel = destinationNode ? nodes.find(n => n.id === destinationNode)?.label : null;
-                if (destinationNode && displayedPaths.length === 0) {
+            {simState === 'done' && (() => {
+                const displayedPaths = criticalPath;
+                const destLabel = effectiveDestNode ? nodes.find(n => n.id === effectiveDestNode)?.label : null;
+                
+                if (displayedPaths.length === 0) {
                     return (
                         <SummaryPanel>
                             <div style={{ fontWeight: 700, color: '#ef4444', fontSize: '1rem' }}>
-                                🔴 No existe camino desde el origen hasta el destino {destLabel}.
+                                {effectiveDestNode 
+                                    ? `🔴 No existe camino desde el origen hasta el destino ${destLabel}.` 
+                                    : `🔴 No existen caminos desde el origen a los demás nodos.`}
                             </div>
                         </SummaryPanel>
                     );
@@ -1178,7 +1192,7 @@ const Dijkstra: React.FC = () => {
                         🔴 {optimizationGoal === 'max'
                             ? (displayedPaths.length > 1 ? 'Caminos Más Largos' : 'Camino Más Largo')
                             : (displayedPaths.length > 1 ? 'Caminos Más Cortos' : 'Camino Más Corto')}
-                        {destinationNode
+                        {effectiveDestNode
                             ? ` (origen → destino ${destLabel})`
                             : ` (${displayedPaths.length} ${displayedPaths.length === 1 ? 'destino' : 'destinos'})`}
                     </div>
